@@ -339,7 +339,9 @@
             </div>
             
             <p class="text-sm text-gray-600 mb-4" id="quickModalInfo"></p>
-            
+
+            <div id="quickAssignmentsList" class="mb-4 space-y-2"></div>
+
             <div class="mb-4">
                 <label class="block text-sm font-medium text-gray-700 mb-1">Nazwisko lekarza</label>
                 <input type="text" id="quickDoctorName" placeholder="Wpisz nazwisko lekarza..." class="w-full p-3 border-2 border-gray-300 rounded-lg text-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all" list="doctorsList">
@@ -473,7 +475,7 @@
                     <i class="fas fa-times text-xl"></i>
                 </button>
             </div>
-            
+
             <div class="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
                 <p class="font-semibold mb-2 text-blue-800 flex items-center gap-2">
                     <i class="fas fa-info-circle"></i> Dodaj nowego lekarza:
@@ -501,14 +503,14 @@
 
     <!-- Stats Modal -->
     <div id="statsModal" class="modal-overlay no-print hidden">
-        <div class="modal-content bg-white rounded-lg p-6 m-4" style="max-width: 700px;">
+        <div class="modal-content bg-white rounded-lg p-6 m-4" style="max-width: 750px;">
             <div class="flex justify-between items-center mb-4">
                 <h3 class="text-xl font-bold text-gray-800">📊 Statystyki dyżurów</h3>
                 <button onclick="closeStatsModal()" class="text-gray-500 hover:text-gray-700">
                     <i class="fas fa-times text-xl"></i>
                 </button>
             </div>
-            <div id="statsContent" class="space-y-4"></div>
+            <div id="statsContent" class="space-y-4 text-sm"></div>
             <button onclick="closeStatsModal()" class="w-full p-3 bg-gray-300 rounded-lg hover:bg-gray-400 mt-4 transition-all font-medium">
                 Zamknij
             </button>
@@ -518,14 +520,6 @@
     <script>
         var schedule = {};
         var dispositions = {};
-        var selectedDay = null;
-        var selectedPosition = null;
-        var selectedDoctorForPartial = null;
-        var selectedDayForPartial = null;
-        var currentMonth = new Date().getMonth();
-        var currentYear = new Date().getFullYear();
-        var highlightEmpty = false;
-
         var doctors = [
             { name: 'Fedorczak', oait: true, anesthesia: true },
             { name: 'Jaszczuk', oait: true, anesthesia: true },
@@ -549,44 +543,85 @@
             { name: 'Szwilineg', oait: false, anesthesia: true }
         ];
 
+        var selectedDay = null;
+        var selectedPosition = null;
+        var selectedDoctorForPartial = null;
+        var selectedDayForPartial = null;
+        var pendingPartialHours = '';
+        var editingAssignmentIndex = null;
+        var highlightEmpty = false;
+        var currentMonth = new Date().getMonth();
+        var currentYear = new Date().getFullYear();
+
+        var monthNames = ['STYCZEŃ', 'LUTY', 'MARZEC', 'KWIECIEŃ', 'MAJ', 'CZERWIEC', 'LIPIEC', 'SIERPIEŃ', 'WRZESIEŃ', 'PAŹDZIERNIK', 'LISTOPAD', 'GRUDZIEŃ'];
+        var dayNames = ['NIEDZ', 'PON', 'WT', 'ŚR', 'CZW', 'PT', 'SOB'];
+
         var positions = [
-            { id: 'oait_14', name: 'OAiIT do 14:00', requiresOait: true },
+            { id: 'oait_14', name: 'OAiIT do 14:00', requiresOait: true, weekendOptional: true },
             { id: 'oait_24', name: 'OAiIT Dyżur 24h', requiresOait: true },
             { id: 'anes1_24', name: 'ANESTEZJOLOG I 24h', requiresOait: false },
-            { id: 'anes2_chirurg', name: 'ANESTEZJOLOG II SALA CHIRURGICZNA', requiresOait: false },
+            { id: 'anes2_chirurg', name: 'ANESTEZJOLOG II SALA CHIRURGICZNA', requiresOait: false, weekendOptional: true, tags: ['tarczyca'] },
             { id: 'anes3', name: 'ANESTEZJOLOG III', requiresOait: false },
             { id: 'anes4_ortop', name: 'ANESTEZJOLOG IV ORTOPEDIA', requiresOait: false },
-            { id: 'anes5_wyb', name: 'SALA WYBUDZEŃ/ANESTEZJOLOG V', requiresOait: false },
-            { id: 'endoskopia', name: 'ENDOSKOPIA', requiresOait: false }
+            { id: 'anes5_wyb', name: 'SALA WYBUDZEŃ/ANESTEZJOLOG V', requiresOait: false, weekendOptional: true },
+            { id: 'endoskopia', name: 'ENDOSKOPIA', requiresOait: false, weekendOptional: true }
         ];
 
-        var posColors = [
-            'bg-blue-50', 'bg-blue-100', 'bg-green-100', 'bg-yellow-50',
-            'bg-purple-50', 'bg-pink-50', 'bg-orange-50', 'bg-teal-50'
-        ];
+        var posColors = ['bg-blue-50', 'bg-blue-100', 'bg-green-100', 'bg-yellow-50', 'bg-purple-50', 'bg-pink-50', 'bg-orange-50', 'bg-teal-50'];
 
-        var monthNames = ['STYCZEŃ', 'LUTY', 'MARZEC', 'KWIECIEŃ', 'MAJ', 'CZERWIEC', 
-                           'LIPIEC', 'SIERPIEŃ', 'WRZESIEŃ', 'PAŹDZIERNIK', 'LISTOPAD', 'GRUDZIEŃ'];
-
-        var dayNames = ['NIEDZ', 'PON', 'WT', 'ŚR', 'CZW', 'PT', 'SOB'];
+        document.addEventListener('DOMContentLoaded', init);
 
         function init() {
             document.getElementById('monthSelect').value = currentMonth;
             document.getElementById('yearInput').value = currentYear;
+
             loadFromLocalStorage();
-            updateSchedule();
+            normalizeSchedule();
+            updateScheduleHeader();
+            renderSchedule();
             initDoctorsList();
+            renderDoctorsList();
+            attachDispositionsSearch();
             updateCurrentDate();
+        }
+
+        function updateScheduleHeader() {
+            document.getElementById('scheduleTitle').textContent = 'OAiIT ' + monthNames[currentMonth] + ' ' + currentYear + ' - DYŻURY ANESTEZJOLOGÓW';
+        }
+
+        function attachDispositionsSearch() {
+            var search = document.getElementById('searchDoctor');
+            if (search) {
+                search.addEventListener('input', renderDispositionsList);
+            }
+        }
+
+        function normalizeSchedule() {
+            Object.keys(schedule).forEach(function(dateKey) {
+                var dayData = schedule[dateKey];
+                Object.keys(dayData || {}).forEach(function(positionId) {
+                    var value = dayData[positionId];
+                    if (!value) return;
+                    if (Array.isArray(value)) return;
+                    if (value.doctor) {
+                        dayData[positionId] = [value];
+                    } else {
+                        dayData[positionId] = [];
+                    }
+                });
+            });
         }
 
         function initDoctorsList() {
             var datalist = document.getElementById('doctorsList');
+            if (!datalist) return;
             datalist.innerHTML = '';
-            for (var i = 0; i < doctors.length; i++) {
+            doctors.sort(function(a, b) { return a.name.localeCompare(b.name, 'pl'); });
+            doctors.forEach(function(doc) {
                 var option = document.createElement('option');
-                option.value = doctors[i].name;
+                option.value = doc.name;
                 datalist.appendChild(option);
-            }
+            });
         }
 
         function saveToLocalStorage() {
@@ -599,11 +634,14 @@
 
         function loadFromLocalStorage() {
             var saved = localStorage.getItem('medicalSchedule');
-            if (saved) {
+            if (!saved) return;
+            try {
                 var data = JSON.parse(saved);
                 schedule = data.schedule || {};
                 dispositions = data.dispositions || {};
                 doctors = data.doctors || doctors;
+            } catch (err) {
+                console.error('Nie udało się wczytać zapisanych danych', err);
             }
         }
 
@@ -612,101 +650,1002 @@
         }
 
         function getDayName(day, month, year) {
-            var date = new Date(year, month, day);
-            return dayNames[date.getDay()];
+            return dayNames[new Date(year, month, day).getDay()];
+        }
+
+        function getDateKey(day) {
+            return currentYear + '-' + currentMonth + '-' + day;
         }
 
         function updateSchedule() {
-            currentMonth = parseInt(document.getElementById('monthSelect').value);
-            currentYear = parseInt(document.getElementById('yearInput').value);
-            
-            document.getElementById('scheduleTitle').textContent = 
-                'OAiIT ' + monthNames[currentMonth] + ' ' + currentYear + ' - DYŻURY ANESTEZJOLOGÓW';
-            
+            currentMonth = parseInt(document.getElementById('monthSelect').value, 10);
+            currentYear = parseInt(document.getElementById('yearInput').value, 10);
+            updateScheduleHeader();
             renderSchedule();
+
+            var dispositionsModal = document.getElementById('dispositionsModal');
+            if (dispositionsModal && !dispositionsModal.classList.contains('hidden')) {
+                document.getElementById('dispMonth').textContent = monthNames[currentMonth] + ' ' + currentYear;
+                renderDispositionsList();
+            }
+        }
+
+        function ensureDayEntry(dateKey) {
+            if (!schedule[dateKey]) {
+                schedule[dateKey] = {};
+            }
+            return schedule[dateKey];
+        }
+
+        function getCellAssignments(dateKey, positionId) {
+            var dayData = schedule[dateKey];
+            if (!dayData) return [];
+            var cellValue = dayData[positionId];
+            if (!cellValue) return [];
+            if (!Array.isArray(cellValue)) {
+                if (cellValue.doctor) {
+                    dayData[positionId] = [cellValue];
+                    return dayData[positionId];
+                }
+                return [];
+            }
+            return cellValue;
+        }
+
+        function setCellAssignments(dateKey, positionId, assignments) {
+            var dayData = ensureDayEntry(dateKey);
+            if (!assignments || !assignments.length) {
+                delete dayData[positionId];
+                if (!Object.keys(dayData).length) {
+                    delete schedule[dateKey];
+                }
+            } else {
+                dayData[positionId] = assignments;
+            }
         }
 
         function isDoctorAvailable(doctorName, day) {
             var key = currentYear + '-' + currentMonth;
-            if (!dispositions[key]) return {available: true, hours: null};
-            if (!dispositions[key][doctorName]) return {available: true, hours: null};
-            
-            var disposition = dispositions[key][doctorName][day];
-            if (disposition === true) return {available: true, hours: null};
-            if (disposition === false) return {available: false, hours: null};
-            if (typeof disposition === 'object') return {available: true, hours: disposition.hours};
-            
-            return {available: true, hours: null};
+            if (!dispositions[key] || !dispositions[key][doctorName]) {
+                return { available: true, hours: null };
+            }
+            var value = dispositions[key][doctorName][day];
+            if (value === true) return { available: true, hours: null };
+            if (value === false) return { available: false, hours: null };
+            if (value && typeof value === 'object') {
+                return { available: true, hours: value.hours || null };
+            }
+            return { available: true, hours: null };
         }
 
         function renderSchedule() {
             var tbody = document.getElementById('scheduleBody');
             tbody.innerHTML = '';
-            
+
             var days = getDaysInMonth(currentMonth, currentYear);
-            
+
             for (var day = 1; day <= days; day++) {
+                var row = document.createElement('tr');
                 var dayName = getDayName(day, currentMonth, currentYear);
-                var isWeekend = dayName === 'NIEDZ' || dayName === 'SOB';
-                var key = currentYear + '-' + currentMonth + '-' + day;
-                
-                var tr = document.createElement('tr');
-                if (isWeekend) tr.className = 'weekend-row';
-                
+                var weekend = dayName === 'NIEDZ' || dayName === 'SOB';
+                if (weekend) {
+                    row.classList.add('weekend-row');
+                }
+
                 var dateCell = document.createElement('td');
                 dateCell.className = 'border border-gray-300 p-1 text-center font-semibold';
                 dateCell.textContent = day + ' ' + monthNames[currentMonth].substring(0, 3);
-                tr.appendChild(dateCell);
-                
+                row.appendChild(dateCell);
+
                 var dayCell = document.createElement('td');
                 dayCell.className = 'border border-gray-300 p-1 text-center font-semibold';
                 dayCell.textContent = dayName;
-                tr.appendChild(dayCell);
-                
-                for (var i = 0; i < positions.length; i++) {
-                    var pos = positions[i];
+                row.appendChild(dayCell);
+
+                var dateKey = getDateKey(day);
+
+                positions.forEach(function(position, index) {
                     var cell = document.createElement('td');
-                    cell.className = 'border border-gray-300 p-1 ' + posColors[i];
-                    
-                    var content = document.createElement('div');
-                    content.className = 'cell-content';
-                    content.setAttribute('data-day', day);
-                    content.setAttribute('data-position', pos.id);
-                    content.onclick = function() {
-                        openQuickModal(parseInt(this.getAttribute('data-day')), this.getAttribute('data-position'));
+                    cell.className = 'border border-gray-300 p-1 ' + posColors[index];
+
+                    var wrapper = document.createElement('div');
+                    wrapper.className = 'cell-content';
+                    wrapper.dataset.day = day;
+                    wrapper.dataset.position = position.id;
+                    wrapper.onclick = function() {
+                        openQuickModal(parseInt(this.dataset.day, 10), this.dataset.position);
                     };
-                    
-                    var cellData = schedule[key] && schedule[key][pos.id];
-                    if (cellData && cellData.doctor) {
-                        var availability = isDoctorAvailable(cellData.doctor, day);
-                        
-                        var doctorDiv = document.createElement('div');
-                        doctorDiv.className = 'doctor-name';
-                        doctorDiv.textContent = cellData.doctor;
-                        if (!availability.available) {
-                            doctorDiv.textContent += ' ⚠️';
-                            cell.style.backgroundColor = '#fef3c7';
-                        }
-                        content.appendChild(doctorDiv);
-                        
-                        if (cellData.hours || availability.hours) {
-                            var hoursDiv = document.createElement('div');
-                            hoursDiv.className = 'doctor-hours';
-                            hoursDiv.textContent = '(' + (cellData.hours || availability.hours) + ')';
-                            content.appendChild(hoursDiv);
-                        }
-                        
-                        if (cellData.notes) {
-                            var notesDiv = document.createElement('div');
-                            notesDiv.className = 'doctor-notes';
-                            notesDiv.textContent = cellData.notes;
-                            content.appendChild(notesDiv);
-                        }
-                        
-                        // Oznacz komórki z częściową dostępnością
-                        if (availability.hours) {
-                            content.classList.add('partial-cell');
+
+                    var assignments = getCellAssignments(dateKey, position.id);
+
+                    if (assignments.length) {
+                        var hasPartial = false;
+                        assignments.forEach(function(assignment, idx) {
+                            var availability = isDoctorAvailable(assignment.doctor, day);
+                            var card = document.createElement('div');
+                            card.className = 'w-full bg-white/80 rounded-lg border border-blue-200 px-2 py-1 mb-1 shadow-sm';
+
+                            var header = document.createElement('div');
+                            header.className = 'flex items-center justify-between gap-2';
+
+                            var doctorName = document.createElement('div');
+                            doctorName.className = 'doctor-name';
+                            doctorName.textContent = assignment.doctor;
+                            if (!availability.available) {
+                                doctorName.textContent += ' ⚠️';
+                                card.classList.add('bg-amber-100');
+                            }
+                            header.appendChild(doctorName);
+
+                            var badge = document.createElement('span');
+                            badge.className = 'text-[10px] uppercase tracking-wide text-blue-600 font-semibold';
+                            badge.textContent = assignments.length > 1 ? ('#' + (idx + 1)) : 'DYŻUR';
+                            header.appendChild(badge);
+                            card.appendChild(header);
+
+                            if (assignment.hours || availability.hours) {
+                                var hours = document.createElement('div');
+                                hours.className = 'doctor-hours';
+                                hours.textContent = assignment.hours || availability.hours;
+                                card.appendChild(hours);
+                                hasPartial = true;
+                            }
+
+                            if (assignment.notes) {
+                                var notes = document.createElement('div');
+                                notes.className = 'doctor-notes';
+                                notes.textContent = assignment.notes;
+                                card.appendChild(notes);
+                            }
+
+                            wrapper.appendChild(card);
+                        });
+
+                        if (hasPartial) {
+                            wrapper.classList.add('partial-cell');
                         }
                     } else {
-                        if (highlightEmpty) {
-                            cell
+                        if (weekend && position.weekendOptional) {
+                            var info = document.createElement('div');
+                            info.className = 'text-[11px] text-slate-500 text-center leading-tight';
+                            info.innerHTML = 'Weekend – obsada opcjonalna.<br><span class="font-semibold">Kliknij, aby dodać (np. tarczyce).</span>';
+                            wrapper.appendChild(info);
+                        } else {
+                            var placeholder = document.createElement('div');
+                            placeholder.className = 'text-xs text-slate-400';
+                            placeholder.textContent = 'Brak przypisania';
+                            wrapper.appendChild(placeholder);
+                        }
+
+                        if (highlightEmpty && !(weekend && position.weekendOptional)) {
+                            wrapper.classList.add('empty-cell');
+                        }
+                    }
+
+                    cell.appendChild(wrapper);
+                    row.appendChild(cell);
+                });
+
+                tbody.appendChild(row);
+            }
+
+            saveToLocalStorage();
+        }
+
+        function openQuickModal(day, positionId) {
+            selectedDay = day;
+            selectedPosition = positionId;
+            editingAssignmentIndex = null;
+            document.getElementById('quickDoctorName').value = '';
+            document.getElementById('quickHours').value = '';
+            document.getElementById('quickNotes').value = '';
+
+            var position = positions.find(function(pos) { return pos.id === positionId; });
+            var title = 'Szybkie przypisanie';
+            if (position) {
+                title = position.name;
+            }
+            document.getElementById('quickModalTitle').textContent = title;
+
+            var dayLabel = day + ' ' + monthNames[currentMonth].toLowerCase();
+            document.getElementById('quickModalInfo').textContent = 'Dzień: ' + dayLabel + ' (' + getDayName(day, currentMonth, currentYear) + ')';
+
+            renderQuickAssignmentsList();
+            document.getElementById('quickModal').classList.remove('hidden');
+        }
+
+        function closeQuickModal() {
+            selectedDay = null;
+            selectedPosition = null;
+            editingAssignmentIndex = null;
+            document.getElementById('quickModal').classList.add('hidden');
+        }
+
+        function renderQuickAssignmentsList() {
+            var list = document.getElementById('quickAssignmentsList');
+            list.innerHTML = '';
+            if (selectedDay === null || !selectedPosition) {
+                return;
+            }
+
+            var dateKey = getDateKey(selectedDay);
+            var assignments = getCellAssignments(dateKey, selectedPosition);
+
+            if (!assignments.length) {
+                var empty = document.createElement('p');
+                empty.className = 'text-xs text-slate-500 italic';
+                empty.textContent = 'Brak przypisań dla wybranej komórki.';
+                list.appendChild(empty);
+                return;
+            }
+
+            assignments.forEach(function(assignment, index) {
+                var card = document.createElement('div');
+                card.className = 'border border-slate-200 rounded-lg p-2 bg-slate-50';
+
+                var topRow = document.createElement('div');
+                topRow.className = 'flex items-center justify-between gap-2';
+
+                var label = document.createElement('div');
+                label.className = 'font-semibold text-sm text-slate-700';
+                label.textContent = assignment.doctor;
+                topRow.appendChild(label);
+
+                var controls = document.createElement('div');
+                controls.className = 'flex gap-2';
+
+                var editBtn = document.createElement('button');
+                editBtn.className = 'text-blue-600 hover:text-blue-800 text-xs font-medium';
+                editBtn.textContent = 'Edytuj';
+                editBtn.onclick = function(event) {
+                    event.stopPropagation();
+                    startEditAssignment(index);
+                };
+                controls.appendChild(editBtn);
+
+                var removeBtn = document.createElement('button');
+                removeBtn.className = 'text-red-600 hover:text-red-800 text-xs font-medium';
+                removeBtn.textContent = 'Usuń';
+                removeBtn.onclick = function(event) {
+                    event.stopPropagation();
+                    removeAssignment(index);
+                };
+                controls.appendChild(removeBtn);
+
+                topRow.appendChild(controls);
+                card.appendChild(topRow);
+
+                if (assignment.hours) {
+                    var hours = document.createElement('div');
+                    hours.className = 'doctor-hours mt-1';
+                    hours.textContent = assignment.hours;
+                    card.appendChild(hours);
+                }
+
+                if (assignment.notes) {
+                    var notes = document.createElement('div');
+                    notes.className = 'doctor-notes mt-1';
+                    notes.textContent = assignment.notes;
+                    card.appendChild(notes);
+                }
+
+                list.appendChild(card);
+            });
+        }
+
+        function startEditAssignment(index) {
+            if (selectedDay === null || !selectedPosition) return;
+            var dateKey = getDateKey(selectedDay);
+            var assignments = getCellAssignments(dateKey, selectedPosition);
+            var assignment = assignments[index];
+            if (!assignment) return;
+            editingAssignmentIndex = index;
+            document.getElementById('quickDoctorName').value = assignment.doctor;
+            document.getElementById('quickHours').value = assignment.hours || '';
+            document.getElementById('quickNotes').value = assignment.notes || '';
+        }
+
+        function removeAssignment(index) {
+            if (selectedDay === null || !selectedPosition) return;
+            var dateKey = getDateKey(selectedDay);
+            var assignments = getCellAssignments(dateKey, selectedPosition).slice();
+            assignments.splice(index, 1);
+            setCellAssignments(dateKey, selectedPosition, assignments);
+            editingAssignmentIndex = null;
+            renderQuickAssignmentsList();
+            renderSchedule();
+        }
+
+        function quickAssign() {
+            if (selectedDay === null || !selectedPosition) return;
+
+            var doctor = document.getElementById('quickDoctorName').value.trim();
+            var hours = document.getElementById('quickHours').value.trim();
+            var notes = document.getElementById('quickNotes').value.trim();
+
+            if (!doctor) {
+                alert('Podaj nazwisko lekarza.');
+                return;
+            }
+
+            ensureDoctorExists(doctor);
+
+            var dateKey = getDateKey(selectedDay);
+            var assignments = getCellAssignments(dateKey, selectedPosition).slice();
+
+            var payload = { doctor: doctor };
+            if (hours) payload.hours = hours;
+            if (notes) payload.notes = notes;
+
+            if (editingAssignmentIndex !== null) {
+                assignments[editingAssignmentIndex] = payload;
+            } else {
+                assignments.push(payload);
+            }
+
+            setCellAssignments(dateKey, selectedPosition, assignments);
+            editingAssignmentIndex = null;
+            document.getElementById('quickDoctorName').value = '';
+            document.getElementById('quickHours').value = '';
+            document.getElementById('quickNotes').value = '';
+            renderQuickAssignmentsList();
+            renderSchedule();
+        }
+
+        function ensureDoctorExists(name) {
+            if (doctors.some(function(doc) { return doc.name.toLowerCase() === name.toLowerCase(); })) {
+                return;
+            }
+            doctors.push({ name: name, oait: false, anesthesia: true });
+            initDoctorsList();
+            renderDoctorsList();
+        }
+
+        function quickClear() {
+            if (selectedDay === null || !selectedPosition) return;
+            var dateKey = getDateKey(selectedDay);
+            setCellAssignments(dateKey, selectedPosition, []);
+            editingAssignmentIndex = null;
+            renderQuickAssignmentsList();
+            renderSchedule();
+        }
+
+        function highlightEmptyCells() {
+            highlightEmpty = !highlightEmpty;
+            renderSchedule();
+        }
+
+        function printSchedule() {
+            window.print();
+        }
+
+        function exportSchedule() {
+            var data = JSON.stringify({ schedule: schedule, dispositions: dispositions, doctors: doctors }, null, 2);
+            var blob = new Blob([data], { type: 'application/json' });
+            var url = URL.createObjectURL(blob);
+            var link = document.createElement('a');
+            link.href = url;
+            link.download = 'grafik-oait-' + currentYear + '-' + (currentMonth + 1) + '.json';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+
+        function importSchedule(event) {
+            var file = event.target.files[0];
+            if (!file) return;
+            var reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    var data = JSON.parse(e.target.result);
+                    schedule = data.schedule || {};
+                    dispositions = data.dispositions || {};
+                    doctors = data.doctors || doctors;
+                    normalizeSchedule();
+                    initDoctorsList();
+                    renderDoctorsList();
+                    renderSchedule();
+                    renderDispositionsList();
+                    alert('Dane grafiku zostały wczytane.');
+                } catch (err) {
+                    alert('Nie udało się wczytać pliku. Sprawdź, czy to poprawny plik JSON.');
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function openDispositionsModal() {
+            document.getElementById('dispMonth').textContent = monthNames[currentMonth] + ' ' + currentYear;
+            renderDispositionsList();
+            document.getElementById('dispositionsModal').classList.remove('hidden');
+        }
+
+        function closeDispositionsModal() {
+            document.getElementById('dispositionsModal').classList.add('hidden');
+        }
+
+        function showDispositionsModal() {
+            openDispositionsModal();
+        }
+
+        function getDispositionKey() {
+            var key = currentYear + '-' + currentMonth;
+            if (!dispositions[key]) {
+                dispositions[key] = {};
+            }
+            return key;
+        }
+
+        function ensureDoctorDisposition(doctorName) {
+            var key = getDispositionKey();
+            var entry = dispositions[key][doctorName];
+            var days = getDaysInMonth(currentMonth, currentYear);
+            if (!entry) {
+                entry = {};
+            }
+            for (var i = 1; i <= days; i++) {
+                if (!(i in entry)) {
+                    entry[i] = null;
+                }
+            }
+            Object.keys(entry).forEach(function(dayKey) {
+                var dayNumber = parseInt(dayKey, 10);
+                if (dayNumber > days) {
+                    delete entry[dayKey];
+                }
+            });
+            dispositions[key][doctorName] = entry;
+            return entry;
+        }
+
+        function renderDispositionsList() {
+            var container = document.getElementById('dispositionsList');
+            if (!container) return;
+            container.innerHTML = '';
+            var filter = (document.getElementById('searchDoctor').value || '').trim().toLowerCase();
+            var days = getDaysInMonth(currentMonth, currentYear);
+
+            doctors.forEach(function(doctor) {
+                if (filter && doctor.name.toLowerCase().indexOf(filter) === -1) {
+                    return;
+                }
+
+                var disposition = ensureDoctorDisposition(doctor.name);
+
+                var card = document.createElement('div');
+                card.className = 'border border-slate-200 rounded-lg p-4 bg-white shadow-sm';
+
+                var header = document.createElement('div');
+                header.className = 'flex items-center justify-between mb-2';
+                var title = document.createElement('h4');
+                title.className = 'font-semibold text-slate-700';
+                title.textContent = doctor.name;
+                header.appendChild(title);
+
+                var tags = document.createElement('div');
+                tags.className = 'flex gap-2 text-[11px] text-slate-500';
+                if (doctor.oait) {
+                    var badgeOait = document.createElement('span');
+                    badgeOait.className = 'px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium';
+                    badgeOait.textContent = 'OAiIT';
+                    tags.appendChild(badgeOait);
+                }
+                if (doctor.anesthesia) {
+                    var badgeAnes = document.createElement('span');
+                    badgeAnes.className = 'px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium';
+                    badgeAnes.textContent = 'Anestezja';
+                    tags.appendChild(badgeAnes);
+                }
+                header.appendChild(tags);
+                card.appendChild(header);
+
+                var grid = document.createElement('div');
+                grid.className = 'flex flex-wrap gap-1';
+
+                for (var day = 1; day <= days; day++) {
+                    var btn = document.createElement('div');
+                    btn.className = 'day-button';
+                    btn.textContent = day;
+                    btn.dataset.doctor = doctor.name;
+                    btn.dataset.day = day;
+
+                    var value = disposition[day];
+                    if (value === true) {
+                        btn.classList.add('available');
+                    } else if (value === false) {
+                        btn.classList.add('unavailable');
+                    } else if (value && typeof value === 'object') {
+                        btn.classList.add('partial', 'tooltip');
+                        var hoursLabel = value.hours || 'częściowo';
+                        btn.setAttribute('data-tooltip', hoursLabel);
+                        btn.title = hoursLabel;
+                    }
+
+                    btn.onclick = function() {
+                        toggleDayAvailability(this.dataset.doctor, parseInt(this.dataset.day, 10));
+                    };
+                    grid.appendChild(btn);
+                }
+
+                card.appendChild(grid);
+
+                var partialInfo = Object.keys(disposition)
+                    .filter(function(day) {
+                        return disposition[day] && typeof disposition[day] === 'object' && disposition[day].hours;
+                    })
+                    .sort(function(a, b) { return parseInt(a, 10) - parseInt(b, 10); });
+
+                if (partialInfo.length) {
+                    var summary = document.createElement('div');
+                    summary.className = 'mt-2 text-[12px] text-amber-700';
+                    summary.innerHTML = 'Częściowa dostępność: ' + partialInfo.map(function(day) {
+                        return day + ' (' + disposition[day].hours + ')';
+                    }).join(', ');
+                    card.appendChild(summary);
+                }
+
+                container.appendChild(card);
+            });
+        }
+
+        function toggleDayAvailability(doctorName, day) {
+            var disposition = ensureDoctorDisposition(doctorName);
+            var current = disposition[day];
+
+            if (current === true) {
+                disposition[day] = false;
+            } else if (current === false) {
+                selectedDoctorForPartial = doctorName;
+                selectedDayForPartial = day;
+                pendingPartialHours = '';
+                document.getElementById('customHours').value = '';
+                document.getElementById('partialModalInfo').textContent = doctorName + ' – dzień ' + day + ' (' + getDayName(day, currentMonth, currentYear) + ')';
+                document.getElementById('partialModal').classList.remove('hidden');
+                return;
+            } else if (current && typeof current === 'object') {
+                selectedDoctorForPartial = doctorName;
+                selectedDayForPartial = day;
+                pendingPartialHours = current.hours || '';
+                document.getElementById('customHours').value = pendingPartialHours;
+                document.getElementById('partialModalInfo').textContent = doctorName + ' – dzień ' + day + ' (' + getDayName(day, currentMonth, currentYear) + ')';
+                document.getElementById('partialModal').classList.remove('hidden');
+                return;
+            } else {
+                disposition[day] = true;
+            }
+
+            renderDispositionsList();
+            renderSchedule();
+        }
+
+        function setPartialHours(hours) {
+            pendingPartialHours = hours;
+            document.getElementById('customHours').value = hours;
+        }
+
+        function savePartialAvailability() {
+            if (!selectedDoctorForPartial || !selectedDayForPartial) {
+                closePartialModal();
+                return;
+            }
+
+            var hours = document.getElementById('customHours').value.trim() || pendingPartialHours;
+            if (!hours) {
+                alert('Podaj zakres godzin.');
+                return;
+            }
+
+            var disposition = ensureDoctorDisposition(selectedDoctorForPartial);
+            disposition[selectedDayForPartial] = { hours: hours };
+            closePartialModal();
+            renderDispositionsList();
+            renderSchedule();
+        }
+
+        function closePartialModal() {
+            document.getElementById('partialModal').classList.add('hidden');
+            selectedDoctorForPartial = null;
+            selectedDayForPartial = null;
+            pendingPartialHours = '';
+        }
+
+        function selectAllDays() {
+            var days = getDaysInMonth(currentMonth, currentYear);
+            doctors.forEach(function(doctor) {
+                var disposition = ensureDoctorDisposition(doctor.name);
+                for (var day = 1; day <= days; day++) {
+                    disposition[day] = true;
+                }
+            });
+            renderDispositionsList();
+            renderSchedule();
+        }
+
+        function clearAllDays() {
+            var days = getDaysInMonth(currentMonth, currentYear);
+            doctors.forEach(function(doctor) {
+                var disposition = ensureDoctorDisposition(doctor.name);
+                for (var day = 1; day <= days; day++) {
+                    disposition[day] = false;
+                }
+            });
+            renderDispositionsList();
+            renderSchedule();
+        }
+
+        function saveDispositions() {
+            saveToLocalStorage();
+            alert('Dyspozycje zapisane.');
+        }
+
+        function addNewDoctor() {
+            var input = document.getElementById('newDoctorName');
+            var name = (input.value || '').trim();
+            if (!name) {
+                alert('Wpisz nazwisko lekarza.');
+                return;
+            }
+            if (doctors.some(function(doc) { return doc.name.toLowerCase() === name.toLowerCase(); })) {
+                alert('Taki lekarz już istnieje na liście.');
+                return;
+            }
+            doctors.push({ name: name, oait: false, anesthesia: true });
+            input.value = '';
+            initDoctorsList();
+            renderDoctorsList();
+            renderDispositionsList();
+            saveToLocalStorage();
+        }
+
+        function renderDoctorsList() {
+            var container = document.getElementById('doctorsListContainer');
+            if (!container) return;
+            container.innerHTML = '';
+            if (!doctors.length) {
+                container.innerHTML = '<p class="text-sm text-slate-500">Brak zdefiniowanych lekarzy.</p>';
+                return;
+            }
+
+            doctors.sort(function(a, b) { return a.name.localeCompare(b.name, 'pl'); });
+
+            doctors.forEach(function(doctor, index) {
+                var card = document.createElement('div');
+                card.className = 'border border-slate-200 rounded-lg p-3 bg-white shadow-sm';
+
+                var top = document.createElement('div');
+                top.className = 'flex items-center justify-between';
+
+                var name = document.createElement('span');
+                name.className = 'font-semibold text-slate-700';
+                name.textContent = doctor.name;
+                top.appendChild(name);
+
+                var removeBtn = document.createElement('button');
+                removeBtn.className = 'text-red-500 hover:text-red-700 text-xs font-medium';
+                removeBtn.textContent = 'Usuń';
+                removeBtn.onclick = function() {
+                    if (confirm('Czy na pewno usunąć lekarza ' + doctor.name + '?')) {
+                        removeDoctor(index);
+                    }
+                };
+                top.appendChild(removeBtn);
+                card.appendChild(top);
+
+                var toggles = document.createElement('div');
+                toggles.className = 'mt-3 flex gap-4 text-sm';
+
+                var oaitToggle = createCapabilityToggle('OAiIT', doctor.oait, function(value) {
+                    doctor.oait = value;
+                    saveToLocalStorage();
+                });
+                toggles.appendChild(oaitToggle);
+
+                var anesthesiaToggle = createCapabilityToggle('Anestezja', doctor.anesthesia, function(value) {
+                    doctor.anesthesia = value;
+                    saveToLocalStorage();
+                });
+                toggles.appendChild(anesthesiaToggle);
+
+                card.appendChild(toggles);
+                container.appendChild(card);
+            });
+        }
+
+        function createCapabilityToggle(label, checked, onChange) {
+            var wrapper = document.createElement('label');
+            wrapper.className = 'inline-flex items-center gap-2 cursor-pointer';
+
+            var input = document.createElement('input');
+            input.type = 'checkbox';
+            input.checked = !!checked;
+            input.onchange = function() {
+                onChange(!!this.checked);
+            };
+
+            var span = document.createElement('span');
+            span.textContent = label;
+
+            wrapper.appendChild(input);
+            wrapper.appendChild(span);
+            return wrapper;
+        }
+
+        function removeDoctor(index) {
+            var doctor = doctors[index];
+            doctors.splice(index, 1);
+
+            Object.keys(schedule).forEach(function(dateKey) {
+                var dayData = schedule[dateKey];
+                Object.keys(dayData || {}).forEach(function(positionId) {
+                    var assignments = dayData[positionId];
+                    if (!Array.isArray(assignments)) return;
+                    var filtered = assignments.filter(function(item) {
+                        return item.doctor !== doctor.name;
+                    });
+                    if (filtered.length !== assignments.length) {
+                        dayData[positionId] = filtered;
+                        if (!filtered.length) {
+                            delete dayData[positionId];
+                        }
+                    }
+                });
+                if (!Object.keys(dayData || {}).length) {
+                    delete schedule[dateKey];
+                }
+            });
+
+            Object.keys(dispositions).forEach(function(key) {
+                if (dispositions[key]) {
+                    delete dispositions[key][doctor.name];
+                }
+            });
+
+            initDoctorsList();
+            renderDoctorsList();
+            renderSchedule();
+            renderDispositionsList();
+            saveToLocalStorage();
+        }
+
+        function closeDoctorsModal() {
+            document.getElementById('doctorsModal').classList.add('hidden');
+        }
+
+        function showDoctorsModal() {
+            renderDoctorsList();
+            document.getElementById('doctorsModal').classList.remove('hidden');
+        }
+
+        function showStatsModal() {
+            renderStats();
+            document.getElementById('statsModal').classList.remove('hidden');
+        }
+
+        function closeStatsModal() {
+            document.getElementById('statsModal').classList.add('hidden');
+        }
+
+        function renderStats() {
+            var container = document.getElementById('statsContent');
+            if (!container) return;
+            container.innerHTML = '';
+
+            var totals = {};
+            Object.keys(schedule).forEach(function(dateKey) {
+                var dayData = schedule[dateKey];
+                Object.keys(dayData || {}).forEach(function(positionId) {
+                    var assignments = dayData[positionId];
+                    if (!Array.isArray(assignments)) return;
+                    assignments.forEach(function(entry) {
+                        totals[entry.doctor] = (totals[entry.doctor] || 0) + 1;
+                    });
+                });
+            });
+
+            if (!Object.keys(totals).length) {
+                container.innerHTML = '<p class="text-sm text-slate-500">Brak przypisań w aktualnym miesiącu.</p>';
+                return;
+            }
+
+            var list = document.createElement('div');
+            list.className = 'grid md:grid-cols-2 gap-4';
+
+            Object.keys(totals).sort(function(a, b) {
+                return totals[b] - totals[a];
+            }).forEach(function(doctor) {
+                var card = document.createElement('div');
+                card.className = 'border border-slate-200 rounded-lg p-3 bg-white shadow-sm';
+
+                var title = document.createElement('div');
+                title.className = 'font-semibold text-slate-700 mb-1';
+                title.textContent = doctor;
+                card.appendChild(title);
+
+                var value = document.createElement('div');
+                value.className = 'text-sm text-slate-600';
+                value.textContent = 'Liczba przypisań: ' + totals[doctor];
+                card.appendChild(value);
+
+                list.appendChild(card);
+            });
+
+            container.appendChild(list);
+        }
+
+        function checkConflicts() {
+            var conflicts = [];
+            var days = getDaysInMonth(currentMonth, currentYear);
+
+            for (var day = 1; day <= days; day++) {
+                var dateKey = getDateKey(day);
+                var dayData = schedule[dateKey];
+                if (!dayData) continue;
+
+                var assignmentsByDoctor = {};
+
+                positions.forEach(function(position) {
+                    var assignments = dayData[position.id];
+                    if (!Array.isArray(assignments)) return;
+
+                    assignments.forEach(function(entry) {
+                        var availability = isDoctorAvailable(entry.doctor, day);
+                        if (!availability.available) {
+                            conflicts.push(entry.doctor + ' jest niedostępny ' + formatDate(day) + ' (' + position.name + ')');
+                        } else if (availability.hours && entry.hours) {
+                            if (!isWithinHours(entry.hours, availability.hours)) {
+                                conflicts.push(entry.doctor + ' ma ograniczone godziny (' + availability.hours + ') ' + formatDate(day) + ' – wpisano ' + entry.hours);
+                            }
+                        } else if (availability.hours && !entry.hours) {
+                            conflicts.push(entry.doctor + ' ma dyspozycyjność częściową (' + availability.hours + ') ' + formatDate(day) + ' bez godzin w grafiku.');
+                        }
+
+                        if (!assignmentsByDoctor[entry.doctor]) {
+                            assignmentsByDoctor[entry.doctor] = [];
+                        }
+                        assignmentsByDoctor[entry.doctor].push({ position: position.name, hours: entry.hours });
+                    });
+                });
+
+                Object.keys(assignmentsByDoctor).forEach(function(doctor) {
+                    var entries = assignmentsByDoctor[doctor];
+                    if (entries.length > 1) {
+                        conflicts.push('Lekarz ' + doctor + ' jest przypisany wielokrotnie ' + formatDate(day) + ' (' + entries.map(function(e) {
+                            return e.position;
+                        }).join(', ') + ')');
+                    }
+                });
+            }
+
+            if (!conflicts.length) {
+                alert('Brak konfliktów w aktualnym grafiku.');
+            } else {
+                alert('Znaleziono konflikty:\n- ' + conflicts.join('\n- '));
+            }
+        }
+
+        function isWithinHours(entryHours, availabilityHours) {
+            var entryRange = parseHours(entryHours);
+            var availabilityRange = parseHours(availabilityHours);
+            if (!entryRange || !availabilityRange) return true;
+            return entryRange.start >= availabilityRange.start && entryRange.end <= availabilityRange.end;
+        }
+
+        function parseHours(hours) {
+            if (!hours) return null;
+            var match = hours.match(/(\d{1,2})(?::(\d{2}))?\s*-\s*(\d{1,2})(?::(\d{2}))?/);
+            if (!match) return null;
+            var start = parseInt(match[1], 10) * 60 + (match[2] ? parseInt(match[2], 10) : 0);
+            var end = parseInt(match[3], 10) * 60 + (match[4] ? parseInt(match[4], 10) : 0);
+            return { start: start, end: end };
+        }
+
+        function formatDate(day) {
+            return day + ' ' + monthNames[currentMonth].toLowerCase();
+        }
+
+        function autoFillFromDispositions() {
+            var days = getDaysInMonth(currentMonth, currentYear);
+            var usage = {};
+
+            for (var day = 1; day <= days; day++) {
+                var dayName = getDayName(day, currentMonth, currentYear);
+                var weekend = dayName === 'NIEDZ' || dayName === 'SOB';
+                var dateKey = getDateKey(day);
+                ensureDayEntry(dateKey);
+
+                positions.forEach(function(position) {
+                    if (weekend && position.weekendOptional) {
+                        return;
+                    }
+
+                    var assignments = getCellAssignments(dateKey, position.id);
+                    if (assignments.length) return;
+
+                    var candidate = findDoctorForPosition(day, position, usage, dateKey);
+                    if (candidate) {
+                        setCellAssignments(dateKey, position.id, [candidate]);
+                    }
+                });
+            }
+
+            renderSchedule();
+        }
+
+        function findDoctorForPosition(day, position, usage, dateKey) {
+            var candidates = doctors.filter(function(doc) {
+                if (position.requiresOait && !doc.oait) return false;
+                if (!position.requiresOait && !doc.anesthesia) return false;
+                var availability = isDoctorAvailable(doc.name, day);
+                return availability.available;
+            });
+
+            candidates.sort(function(a, b) {
+                var countA = usage[a.name] || 0;
+                var countB = usage[b.name] || 0;
+                return countA - countB;
+            });
+
+            for (var i = 0; i < candidates.length; i++) {
+                var doctor = candidates[i];
+                if (isDoctorAlreadyAssigned(doctor.name, day)) {
+                    continue;
+                }
+                var availability = isDoctorAvailable(doctor.name, day);
+                usage[doctor.name] = (usage[doctor.name] || 0) + 1;
+                var assignment = { doctor: doctor.name };
+                if (availability.hours) {
+                    assignment.hours = availability.hours;
+                }
+                return assignment;
+            }
+            return null;
+        }
+
+        function isDoctorAlreadyAssigned(doctorName, day) {
+            var dateKey = getDateKey(day);
+            var dayData = schedule[dateKey];
+            if (!dayData) return false;
+            var assigned = false;
+            Object.keys(dayData).forEach(function(positionId) {
+                var assignments = dayData[positionId];
+                if (!Array.isArray(assignments)) return;
+                if (assignments.some(function(entry) { return entry.doctor === doctorName; })) {
+                    assigned = true;
+                }
+            });
+            return assigned;
+        }
+
+        function updateCurrentDate() {
+            var now = new Date();
+            document.getElementById('currentDate').textContent = now.toLocaleString('pl-PL');
+        }
+
+        window.updateSchedule = updateSchedule;
+        window.openQuickModal = openQuickModal;
+        window.closeQuickModal = closeQuickModal;
+        window.quickAssign = quickAssign;
+        window.quickClear = quickClear;
+        window.highlightEmptyCells = highlightEmptyCells;
+        window.printSchedule = printSchedule;
+        window.exportSchedule = exportSchedule;
+        window.importSchedule = importSchedule;
+        window.showDispositionsModal = showDispositionsModal;
+        window.closeDispositionsModal = closeDispositionsModal;
+        window.selectAllDays = selectAllDays;
+        window.clearAllDays = clearAllDays;
+        window.saveDispositions = saveDispositions;
+        window.setPartialHours = setPartialHours;
+        window.savePartialAvailability = savePartialAvailability;
+        window.closePartialModal = closePartialModal;
+        window.addNewDoctor = addNewDoctor;
+        window.closeDoctorsModal = closeDoctorsModal;
+        window.showDoctorsModal = showDoctorsModal;
+        window.showStatsModal = showStatsModal;
+        window.closeStatsModal = closeStatsModal;
+        window.checkConflicts = checkConflicts;
+        window.autoFillFromDispositions = autoFillFromDispositions;
+    </script>
+</body>
+</html>
