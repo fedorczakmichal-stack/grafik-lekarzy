@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generator Grafiku OAiIT</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        :root {
+            --primary: #3b82f6;
+            --primary-dark: #1d4ed8;
+            --secondary: #10b981;
+            --accent: #8b5cf6;
+            --light: #f8fafc;
+            --dark: #1e293b;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+            min-height: 100vh;
+        }
+        
+        .header-gradient {
+            background: linear-gradient(90deg, var(--primary) 0%, var(--accent) 100%);
+        }
+        
+        .btn-primary {
+            background-color: var(--primary);
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary:hover {
+            background-color: var(--primary-dark);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        
+        .btn-secondary {
+            background-color: var(--secondary);
+            transition: all 0.3s ease;
+        }
+        
+        .btn-secondary:hover {
+            background-color: #0d9669;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        
+        .card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            transition: all 0.3s ease;
+        }
+        
+        .card:hover {
+            box-shadow: 0 8px 25px rgba(0,0,0,0.12);
+        }
+        
+        .table-header {
+            background: linear-gradient(90deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+        }
+        
+        .table-row:nth-child(even) {
+            background-color: #f8fafc;
+        }
+        
+        .table-row:hover {
+            background-color: #f1f5f9;
+        }
+        
+        .cell-content {
+            min-height: 40px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            border-radius: 6px;
+            flex-direction: column;
+            padding: 4px;
+        }
+        
+        .cell-content:hover {
+            background-color: rgba(59, 130, 246, 0.1);
+            transform: scale(1.02);
+        }
+        
+        .empty-cell {
+            background-color: #fee2e2 !important;
+            border: 2px dashed #ef4444 !important;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+        
+        .day-button {
+            width: 35px;
+            height: 35px;
+            border: 1px solid #ccc;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            margin: 2px;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+        }
+        
+        .day-button.available {
+            background-color: var(--secondary);
+            color: white;
+            font-weight: bold;
+        }
+        
+        .day-button.unavailable {
+            background-color: #ef4444;
+            color: white;
+        }
+        
+        .day-button.partial {
+            background: linear-gradient(135deg, var(--secondary) 50%, #ef4444 50%);
+            color: white;
+            font-weight: bold;
+        }
+        
+        .day-button:hover {
+            transform: scale(1.1);
+        }
+        
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 999;
+            overflow-y: auto;
+            display: flex;
+            align-items: flex-start;
+            padding: 20px 0;
+            backdrop-filter: blur(5px);
+        }
+        
+        .modal-content {
+            margin: auto;
+            max-width: 900px;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+            border-radius: 16px;
+        }
+        
+        .tooltip {
+            position: relative;
+        }
+        
+        .tooltip:before {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--dark);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+            z-index: 10;
+        }
+        
+        .tooltip:hover:before {
+            opacity: 1;
+        }
+        
+        @media print {
+            body { margin: 0; background: white; }
+            @page { size: A4 landscape; margin: 10mm; }
+            .no-print { display: none !important; }
+            table { font-size: 7pt; }
+            th, td { padding: 2px !important; }
+            .cell-content { min-height: 20px; }
+            .cell-content:hover { background-color: transparent; transform: none; }
+            .empty-cell { background-color: #ffcccc !important; }
+        }
+        
+        .doctor-name {
+            font-weight: bold;
+            font-size: 12px;
+        }
+        
+        .doctor-hours {
+            font-size: 10px;
+            color: #666;
+        }
+        
+        .doctor-notes {
+            font-size: 9px;
+            font-style: italic;
+            color: #888;
+        }
+        
+        .weekend-row {
+            background-color: #fef2f2 !important;
+        }
+        
+        .partial-cell {
+            background: linear-gradient(135deg, #d1fae5 50%, #fef3c7 50%) !important;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="w-full min-h-screen p-4">
+        <div class="max-w-full mx-auto card overflow-hidden">
+            <div class="p-6 border-b header-gradient text-white">
+                <div class="flex justify-between items-center mb-4">
+                    <div>
+                        <h1 class="text-2xl font-bold">Grafik Dyżurów Anestezjologów</h1>
+                        <p class="text-blue-100 mt-1">Oddział Anestezjologii i Intensywnej Terapii</p>
+                    </div>
+                    <div class="flex gap-2 no-print flex-wrap">
+                        <button onclick="showDispositionsModal()" class="px-4 py-2 bg-white text-blue-600 rounded-lg hover:bg-blue-50 font-medium transition-all flex items-center gap-2 shadow">
+                            <i class="fas fa-calendar-alt"></i> Dyspozycje
+                        </button>
+                        <button onclick="showDoctorsModal()" class="px-4 py-2 bg-white text-indigo-600 rounded-lg hover:bg-indigo-50 font-medium transition-all flex items-center gap-2 shadow">
+                            <i class="fas fa-user-md"></i> Lekarze
+                        </button>
+                        <button onclick="autoFillFromDispositions()" class="px-4 py-2 bg-white text-green-600 rounded-lg hover:bg-green-50 font-medium transition-all flex items-center gap-2 shadow">
+                            <i class="fas fa-robot"></i> Auto-wypełnij
+                        </button>
+                        <button onclick="highlightEmptyCells()" class="px-4 py-2 bg-white text-red-600 rounded-lg hover:bg-red-50 font-medium transition-all flex items-center gap-2 shadow">
+                            <i class="fas fa-search"></i> Pokaż dziury
+                        </button>
+                        <button onclick="showStatsModal()" class="px-4 py-2 bg-white text-cyan-600 rounded-lg hover:bg-cyan-50 font-medium transition-all flex items-center gap-2 shadow">
+                            <i class="fas fa-chart-bar"></i> Statystyki
+                        </button>
+                        <button onclick="printSchedule()" class="px-4 py-2 bg-white text-blue-600 rounded-lg hover:bg-blue-50 font-medium transition-all flex items-center gap-2 shadow">
+                            <i class="fas fa-print"></i> Drukuj
+                        </button>
+                        <button onclick="exportSchedule()" class="px-4 py-2 bg-white text-purple-600 rounded-lg hover:bg-purple-50 font-medium transition-all flex items-center gap-2 shadow">
+                            <i class="fas fa-save"></i> Zapisz
+                        </button>
+                        <label class="px-4 py-2 bg-white text-orange-600 rounded-lg hover:bg-orange-50 font-medium transition-all flex items-center gap-2 shadow cursor-pointer">
+                            <i class="fas fa-folder-open"></i> Wczytaj
+                            <input type="file" accept=".json" onchange="importSchedule(event)" class="hidden">
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="flex gap-4 items-center no-print">
+                    <div class="flex items-center gap-2 bg-white/20 p-2 rounded-lg">
+                        <i class="fas fa-calendar text-white"></i>
+                        <select id="monthSelect" onchange="updateSchedule()" class="px-3 py-1 bg-transparent text-white border-0 rounded focus:ring-0">
+                            <option value="0">Styczeń</option>
+                            <option value="1">Luty</option>
+                            <option value="2">Marzec</option>
+                            <option value="3">Kwiecień</option>
+                            <option value="4">Maj</option>
+                            <option value="5">Czerwiec</option>
+                            <option value="6">Lipiec</option>
+                            <option value="7">Sierpień</option>
+                            <option value="8">Wrzesień</option>
+                            <option value="9">Październik</option>
+                            <option value="10">Listopad</option>
+                            <option value="11">Grudzień</option>
+                        </select>
+                    </div>
+                    
+                    <div class="flex items-center gap-2 bg-white/20 p-2 rounded-lg">
+                        <i class="fas fa-calendar-alt text-white"></i>
+                        <input type="number" id="yearInput" value="2025" onchange="updateSchedule()" class="px-3 py-1 bg-transparent text-white border-0 rounded w-20 focus:ring-0">
+                    </div>
+                    
+                    <button onclick="checkConflicts()" class="px-4 py-2 bg-white text-yellow-600 rounded-lg hover:bg-yellow-50 font-medium transition-all flex items-center gap-2 shadow">
+                        <i class="fas fa-exclamation-triangle"></i> Sprawdź konflikty
+                    </button>
+                </div>
+                
+                <div class="text-center mt-4">
+                    <h2 class="text-xl font-semibold" id="scheduleTitle"></h2>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full border-collapse text-sm" id="scheduleTable">
+                    <thead>
+                        <tr class="table-header">
+                            <th class="border border-white/30 p-2 w-20">DATA</th>
+                            <th class="border border-white/30 p-2 w-16">DZIEŃ</th>
+                            <th class="border border-white/30 p-2 bg-blue-500/80">OAiIT<br>do 14:00</th>
+                            <th class="border border-white/30 p-2 bg-blue-600/80">OAiIT<br>Dyżur 24h</th>
+                            <th class="border border-white/30 p-2 bg-green-600/80">ANESTEZJOLOG I<br>24h</th>
+                            <th class="border border-white/30 p-2 bg-yellow-500/80">ANESTEZJOLOG II<br>SALA<br>CHIRURGICZNA</th>
+                            <th class="border border-white/30 p-2 bg-purple-500/80">ANESTEZJOLOG III</th>
+                            <th class="border border-white/30 p-2 bg-pink-500/80">ANESTEZJOLOG IV<br>ORTOPEDIA</th>
+                            <th class="border border-white/30 p-2 bg-orange-500/80">SALA WYBUDZEŃ/<br>ANESTEZJOLOG V</th>
+                            <th class="border border-white/30 p-2 bg-teal-500/80">ENDOSKOPIA</th>
+                        </tr>
+                    </thead>
+                    <tbody id="scheduleBody"></tbody>
+                </table>
+            </div>
+
+            <div class="p-4 text-sm text-gray-600 border-t bg-gray-50 flex justify-between items-center">
+                <div>
+                    <p class="font-semibold">Ordynator Oddziału Anestezjologii i Intensywnej Terapii</p>
+                    <p>lek. med. Małgorzata Olszewska-Kozłańska</p>
+                    <p>specjalista anestezjologii i intensywnej terapii</p>
+                </div>
+                <div class="text-right text-xs text-gray-500">
+                    <p>Wygenerowano: <span id="currentDate"></span></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Assignment Modal -->
+    <div id="quickModal" class="modal-overlay no-print hidden">
+        <div class="modal-content bg-white rounded-lg p-6 m-4" style="max-width: 500px;">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-gray-800" id="quickModalTitle">Szybkie przypisanie</h3>
+                <button onclick="closeQuickModal()" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <p class="text-sm text-gray-600 mb-4" id="quickModalInfo"></p>
+            
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Nazwisko lekarza</label>
+                <input type="text" id="quickDoctorName" placeholder="Wpisz nazwisko lekarza..." class="w-full p-3 border-2 border-gray-300 rounded-lg text-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all" list="doctorsList">
+                <datalist id="doctorsList"></datalist>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Godziny</label>
+                    <input type="text" id="quickHours" placeholder="7:30-19" class="w-full p-2 border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Notatki</label>
+                    <input type="text" id="quickNotes" placeholder="Notatki" class="w-full p-2 border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-2">
+                <button onclick="quickAssign()" class="p-3 bg-green-500 text-white rounded-lg hover:bg-green-600 font-bold transition-all flex items-center justify-center gap-2">
+                    <i class="fas fa-check"></i> Zapisz
+                </button>
+                <button onclick="quickClear()" class="p-3 bg-red-500 text-white rounded-lg hover:bg-red-600 font-bold transition-all flex items-center justify-center gap-2">
+                    <i class="fas fa-times"></i> Wyczyść
+                </button>
+                <button onclick="closeQuickModal()" class="p-3 bg-gray-300 rounded-lg hover:bg-gray-400 font-bold transition-all flex items-center justify-center gap-2">
+                    Anuluj
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dispositions Modal -->
+    <div id="dispositionsModal" class="modal-overlay no-print hidden">
+        <div class="modal-content bg-white rounded-lg p-6 m-4">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-2xl font-bold text-gray-800">📅 Dyspozycje lekarzy - <span id="dispMonth"></span></h3>
+                <button onclick="closeDispositionsModal()" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <div class="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <p class="font-semibold mb-2 text-blue-800 flex items-center gap-2">
+                    <i class="fas fa-info-circle"></i> Instrukcja:
+                </p>
+                <p class="text-blue-700">
+                    <span class="font-semibold">Kliknij na dzień:</span><br>
+                    - <span class="text-green-600">Zielony</span> = dostępny cały dzień<br>
+                    - <span class="text-red-600">Czerwony</span> = niedostępny<br>
+                    - <span class="text-yellow-600">Pół na pół</span> = dostępny częściowo (kliknij ponownie, aby wybrać godziny)
+                </p>
+            </div>
+
+            <div class="mb-4 flex gap-2 flex-wrap">
+                <div class="flex-1 min-w-[200px]">
+                    <input type="text" id="searchDoctor" placeholder="Szukaj lekarza..." class="w-full p-2 border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all">
+                </div>
+                <button onclick="selectAllDays()" class="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 font-medium transition-all flex items-center gap-2">
+                    <i class="fas fa-check-square"></i> Zaznacz wszystkie
+                </button>
+                <button onclick="clearAllDays()" class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 font-medium transition-all flex items-center gap-2">
+                    <i class="fas fa-times-circle"></i> Odznacz wszystkie
+                </button>
+            </div>
+
+            <div id="dispositionsList" class="space-y-4 max-h-96 overflow-y-auto pr-2"></div>
+
+            <div class="mt-4 flex gap-2">
+                <button onclick="saveDispositions()" class="flex-1 p-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-bold transition-all flex items-center justify-center gap-2">
+                    <i class="fas fa-save"></i> Zapisz dyspozycje
+                </button>
+                <button onclick="closeDispositionsModal()" class="flex-1 p-3 bg-gray-300 rounded-lg hover:bg-gray-400 font-bold transition-all flex items-center justify-center gap-2">
+                    Zamknij
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Partial Availability Modal -->
+    <div id="partialModal" class="modal-overlay no-print hidden">
+        <div class="modal-content bg-white rounded-lg p-6 m-4" style="max-width: 500px;">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-gray-800">Częściowa dostępność</h3>
+                <button onclick="closePartialModal()" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <p class="text-sm text-gray-600 mb-4" id="partialModalInfo"></p>
+            
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Wybierz dostępne godziny:</label>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="setPartialHours('7:00-14:00')" class="p-3 bg-blue-100 border border-blue-300 rounded-lg hover:bg-blue-200 transition-all">
+                        7:00-14:00
+                    </button>
+                    <button onclick="setPartialHours('7:00-18:00')" class="p-3 bg-blue-100 border border-blue-300 rounded-lg hover:bg-blue-200 transition-all">
+                        7:00-18:00
+                    </button>
+                    <button onclick="setPartialHours('14:00-22:00')" class="p-3 bg-blue-100 border border-blue-300 rounded-lg hover:bg-blue-200 transition-all">
+                        14:00-22:00
+                    </button>
+                    <button onclick="setPartialHours('8:00-16:00')" class="p-3 bg-blue-100 border border-blue-300 rounded-lg hover:bg-blue-200 transition-all">
+                        8:00-16:00
+                    </button>
+                </div>
+            </div>
+            
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Lub wpisz własne godziny:</label>
+                <input type="text" id="customHours" placeholder="np. 7:30-15:30" class="w-full p-2 border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all">
+            </div>
+
+            <div class="flex gap-2">
+                <button onclick="savePartialAvailability()" class="flex-1 p-3 bg-green-500 text-white rounded-lg hover:bg-green-600 font-bold transition-all flex items-center justify-center gap-2">
+                    <i class="fas fa-check"></i> Zapisz
+                </button>
+                <button onclick="closePartialModal()" class="flex-1 p-3 bg-gray-300 rounded-lg hover:bg-gray-400 font-bold transition-all flex items-center justify-center gap-2">
+                    Anuluj
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Doctors Management Modal -->
+    <div id="doctorsModal" class="modal-overlay no-print hidden">
+        <div class="modal-content bg-white rounded-lg p-6 m-4" style="max-width: 600px;">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-2xl font-bold text-gray-800">Zarządzanie lekarzami</h3>
+                <button onclick="closeDoctorsModal()" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <div class="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <p class="font-semibold mb-2 text-blue-800 flex items-center gap-2">
+                    <i class="fas fa-info-circle"></i> Dodaj nowego lekarza:
+                </p>
+                <div class="flex gap-2">
+                    <input type="text" id="newDoctorName" placeholder="Nazwisko lekarza" class="flex-1 p-2 border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all">
+                    <button onclick="addNewDoctor()" class="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 font-medium transition-all flex items-center gap-2">
+                        <i class="fas fa-plus"></i> Dodaj
+                    </button>
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <h4 class="font-semibold text-lg mb-2">Lista lekarzy:</h4>
+                <div id="doctorsListContainer" class="space-y-2 max-h-64 overflow-y-auto"></div>
+            </div>
+
+            <div class="mt-4 flex gap-2">
+                <button onclick="closeDoctorsModal()" class="flex-1 p-3 bg-gray-300 rounded-lg hover:bg-gray-400 font-bold transition-all flex items-center justify-center gap-2">
+                    Zamknij
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stats Modal -->
+    <div id="statsModal" class="modal-overlay no-print hidden">
+        <div class="modal-content bg-white rounded-lg p-6 m-4" style="max-width: 700px;">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-gray-800">📊 Statystyki dyżurów</h3>
+                <button onclick="closeStatsModal()" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            <div id="statsContent" class="space-y-4"></div>
+            <button onclick="closeStatsModal()" class="w-full p-3 bg-gray-300 rounded-lg hover:bg-gray-400 mt-4 transition-all font-medium">
+                Zamknij
+            </button>
+        </div>
+    </div>
+
+    <script>
+        var schedule = {};
+        var dispositions = {};
+        var selectedDay = null;
+        var selectedPosition = null;
+        var selectedDoctorForPartial = null;
+        var selectedDayForPartial = null;
+        var currentMonth = new Date().getMonth();
+        var currentYear = new Date().getFullYear();
+        var highlightEmpty = false;
+
+        var doctors = [
+            { name: 'Fedorczak', oait: true, anesthesia: true },
+            { name: 'Jaszczuk', oait: true, anesthesia: true },
+            { name: 'Olszewska', oait: true, anesthesia: true },
+            { name: 'Marynowski', oait: false, anesthesia: true },
+            { name: 'Tadeusiak', oait: false, anesthesia: true },
+            { name: 'Wieczorek', oait: true, anesthesia: true },
+            { name: 'Weber', oait: false, anesthesia: true },
+            { name: 'Kowalczyk', oait: false, anesthesia: true },
+            { name: 'Bartnik', oait: false, anesthesia: true },
+            { name: 'Glapiński', oait: false, anesthesia: true },
+            { name: 'Pietrasik', oait: false, anesthesia: true },
+            { name: 'Szymak', oait: false, anesthesia: true },
+            { name: 'Sujka', oait: false, anesthesia: true },
+            { name: 'Zgit', oait: false, anesthesia: true },
+            { name: 'Gnacikowska', oait: false, anesthesia: true },
+            { name: 'Statnik', oait: false, anesthesia: true },
+            { name: 'Piechota', oait: false, anesthesia: true },
+            { name: 'Niedzielski', oait: false, anesthesia: true },
+            { name: 'Łuczywek', oait: false, anesthesia: true },
+            { name: 'Szwilineg', oait: false, anesthesia: true }
+        ];
+
+        var positions = [
+            { id: 'oait_14', name: 'OAiIT do 14:00', requiresOait: true },
+            { id: 'oait_24', name: 'OAiIT Dyżur 24h', requiresOait: true },
+            { id: 'anes1_24', name: 'ANESTEZJOLOG I 24h', requiresOait: false },
+            { id: 'anes2_chirurg', name: 'ANESTEZJOLOG II SALA CHIRURGICZNA', requiresOait: false },
+            { id: 'anes3', name: 'ANESTEZJOLOG III', requiresOait: false },
+            { id: 'anes4_ortop', name: 'ANESTEZJOLOG IV ORTOPEDIA', requiresOait: false },
+            { id: 'anes5_wyb', name: 'SALA WYBUDZEŃ/ANESTEZJOLOG V', requiresOait: false },
+            { id: 'endoskopia', name: 'ENDOSKOPIA', requiresOait: false }
+        ];
+
+        var posColors = [
+            'bg-blue-50', 'bg-blue-100', 'bg-green-100', 'bg-yellow-50',
+            'bg-purple-50', 'bg-pink-50', 'bg-orange-50', 'bg-teal-50'
+        ];
+
+        var monthNames = ['STYCZEŃ', 'LUTY', 'MARZEC', 'KWIECIEŃ', 'MAJ', 'CZERWIEC', 
+                           'LIPIEC', 'SIERPIEŃ', 'WRZESIEŃ', 'PAŹDZIERNIK', 'LISTOPAD', 'GRUDZIEŃ'];
+
+        var dayNames = ['NIEDZ', 'PON', 'WT', 'ŚR', 'CZW', 'PT', 'SOB'];
+
+        function init() {
+            document.getElementById('monthSelect').value = currentMonth;
+            document.getElementById('yearInput').value = currentYear;
+            loadFromLocalStorage();
+            updateSchedule();
+            initDoctorsList();
+            updateCurrentDate();
+        }
+
+        function initDoctorsList() {
+            var datalist = document.getElementById('doctorsList');
+            datalist.innerHTML = '';
+            for (var i = 0; i < doctors.length; i++) {
+                var option = document.createElement('option');
+                option.value = doctors[i].name;
+                datalist.appendChild(option);
+            }
+        }
+
+        function saveToLocalStorage() {
+            localStorage.setItem('medicalSchedule', JSON.stringify({
+                schedule: schedule,
+                dispositions: dispositions,
+                doctors: doctors
+            }));
+        }
+
+        function loadFromLocalStorage() {
+            var saved = localStorage.getItem('medicalSchedule');
+            if (saved) {
+                var data = JSON.parse(saved);
+                schedule = data.schedule || {};
+                dispositions = data.dispositions || {};
+                doctors = data.doctors || doctors;
+            }
+        }
+
+        function getDaysInMonth(month, year) {
+            return new Date(year, month + 1, 0).getDate();
+        }
+
+        function getDayName(day, month, year) {
+            var date = new Date(year, month, day);
+            return dayNames[date.getDay()];
+        }
+
+        function updateSchedule() {
+            currentMonth = parseInt(document.getElementById('monthSelect').value);
+            currentYear = parseInt(document.getElementById('yearInput').value);
+            
+            document.getElementById('scheduleTitle').textContent = 
+                'OAiIT ' + monthNames[currentMonth] + ' ' + currentYear + ' - DYŻURY ANESTEZJOLOGÓW';
+            
+            renderSchedule();
+        }
+
+        function isDoctorAvailable(doctorName, day) {
+            var key = currentYear + '-' + currentMonth;
+            if (!dispositions[key]) return {available: true, hours: null};
+            if (!dispositions[key][doctorName]) return {available: true, hours: null};
+            
+            var disposition = dispositions[key][doctorName][day];
+            if (disposition === true) return {available: true, hours: null};
+            if (disposition === false) return {available: false, hours: null};
+            if (typeof disposition === 'object') return {available: true, hours: disposition.hours};
+            
+            return {available: true, hours: null};
+        }
+
+        function renderSchedule() {
+            var tbody = document.getElementById('scheduleBody');
+            tbody.innerHTML = '';
+            
+            var days = getDaysInMonth(currentMonth, currentYear);
+            
+            for (var day = 1; day <= days; day++) {
+                var dayName = getDayName(day, currentMonth, currentYear);
+                var isWeekend = dayName === 'NIEDZ' || dayName === 'SOB';
+                var key = currentYear + '-' + currentMonth + '-' + day;
+                
+                var tr = document.createElement('tr');
+                if (isWeekend) tr.className = 'weekend-row';
+                
+                var dateCell = document.createElement('td');
+                dateCell.className = 'border border-gray-300 p-1 text-center font-semibold';
+                dateCell.textContent = day + ' ' + monthNames[currentMonth].substring(0, 3);
+                tr.appendChild(dateCell);
+                
+                var dayCell = document.createElement('td');
+                dayCell.className = 'border border-gray-300 p-1 text-center font-semibold';
+                dayCell.textContent = dayName;
+                tr.appendChild(dayCell);
+                
+                for (var i = 0; i < positions.length; i++) {
+                    var pos = positions[i];
+                    var cell = document.createElement('td');
+                    cell.className = 'border border-gray-300 p-1 ' + posColors[i];
+                    
+                    var content = document.createElement('div');
+                    content.className = 'cell-content';
+                    content.setAttribute('data-day', day);
+                    content.setAttribute('data-position', pos.id);
+                    content.onclick = function() {
+                        openQuickModal(parseInt(this.getAttribute('data-day')), this.getAttribute('data-position'));
+                    };
+                    
+                    var cellData = schedule[key] && schedule[key][pos.id];
+                    if (cellData && cellData.doctor) {
+                        var availability = isDoctorAvailable(cellData.doctor, day);
+                        
+                        var doctorDiv = document.createElement('div');
+                        doctorDiv.className = 'doctor-name';
+                        doctorDiv.textContent = cellData.doctor;
+                        if (!availability.available) {
+                            doctorDiv.textContent += ' ⚠️';
+                            cell.style.backgroundColor = '#fef3c7';
+                        }
+                        content.appendChild(doctorDiv);
+                        
+                        if (cellData.hours || availability.hours) {
+                            var hoursDiv = document.createElement('div');
+                            hoursDiv.className = 'doctor-hours';
+                            hoursDiv.textContent = '(' + (cellData.hours || availability.hours) + ')';
+                            content.appendChild(hoursDiv);
+                        }
+                        
+                        if (cellData.notes) {
+                            var notesDiv = document.createElement('div');
+                            notesDiv.className = 'doctor-notes';
+                            notesDiv.textContent = cellData.notes;
+                            content.appendChild(notesDiv);
+                        }
+                        
+                        // Oznacz komórki z częściową dostępnością
+                        if (availability.hours) {
+                            content.classList.add('partial-cell');
+                        }
+                    } else {
+                        if (highlightEmpty) {
+                            cell
