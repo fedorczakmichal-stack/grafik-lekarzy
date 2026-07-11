@@ -9,54 +9,137 @@
 <meta http-equiv="Expires" content="0">
 <title>OAiIT 2026 — ładowanie atlasu pacjentów</title>
 <style>
-html,body{height:100%;margin:0;background:#06111f;color:#f3f8fd;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-.wrap{height:100%;display:grid;place-items:center;padding:24px;text-align:center;box-sizing:border-box}.card{max-width:520px;padding:28px;border:1px solid rgba(255,255,255,.12);border-radius:22px;background:linear-gradient(145deg,rgba(255,255,255,.06),rgba(255,255,255,.02));box-shadow:0 20px 60px rgba(0,0,0,.35)}.spinner{width:48px;height:48px;border-radius:50%;border:4px solid rgba(255,255,255,.12);border-top-color:#4ad8b8;margin:0 auto 18px;animation:s .8s linear infinite}@keyframes s{to{transform:rotate(360deg)}}h1{font-size:24px;margin:0 0 8px}p{color:#9eb1c5;margin:0}.err{color:#ff9aa6;margin-top:14px;font-size:13px;white-space:pre-wrap}.report-frame{position:fixed;inset:0;width:100%;height:100%;border:0;background:#06111f}.runtime-error{position:fixed;z-index:99999;left:12px;right:12px;bottom:12px;padding:12px 14px;border:1px solid rgba(255,109,125,.45);border-radius:13px;background:rgba(62,11,20,.96);color:#ffd9dd;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;box-shadow:0 14px 40px rgba(0,0,0,.45);white-space:pre-wrap}
+html,body{height:100%;margin:0;background:#06111f;color:#f3f8fd;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow:hidden}.wrap{height:100%;display:grid;place-items:center;padding:24px;text-align:center;box-sizing:border-box}.card{max-width:520px;padding:28px;border:1px solid rgba(255,255,255,.12);border-radius:22px;background:linear-gradient(145deg,rgba(255,255,255,.06),rgba(255,255,255,.02));box-shadow:0 20px 60px rgba(0,0,0,.35)}.spinner{width:48px;height:48px;border-radius:50%;border:4px solid rgba(255,255,255,.12);border-top-color:#4ad8b8;margin:0 auto 18px;animation:s .8s linear infinite}@keyframes s{to{transform:rotate(360deg)}}h1{font-size:24px;margin:0 0 8px}p{color:#9eb1c5;margin:0}.err{color:#ff9aa6;margin-top:14px;font-size:13px;white-space:pre-wrap}.report-frame{position:fixed;inset:0;width:100%;height:100%;height:100dvh;border:0;background:#06111f}.runtime-error{position:fixed;z-index:99999;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));padding:12px 14px;border:1px solid rgba(255,109,125,.45);border-radius:13px;background:rgba(62,11,20,.97);color:#ffd9dd;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;box-shadow:0 14px 40px rgba(0,0,0,.45);white-space:pre-wrap}
 </style>
 </head>
 <body>
-<div class="wrap" id="loader"><div class="card"><div class="spinner"></div><h1>Ładowanie nowej wersji raportu</h1><p>Atlas 53 pacjentów i analiza kohorty.</p><div class="err" id="err"></div></div></div>
+<div class="wrap" id="loader"><div class="card"><div class="spinner"></div><h1>Ładowanie raportu</h1><p>Atlas 53 pacjentów i analiza kohorty.</p><div class="err" id="err"></div></div></div>
 <script>
 (async()=>{
+  const VERSION='20260711-v4';
   const errorEl=document.getElementById('err');
-  try{
-    const v='20260711-v3';
-    const urls=Array.from({length:7},(_,i)=>`v2/part-${i+1}.txt?${v}`);
-    const parts=await Promise.all(urls.map(async u=>{
-      const r=await fetch(u,{cache:'no-store'});
-      if(!r.ok)throw new Error(`${u}: HTTP ${r.status}`);
-      return r.text();
-    }));
-    let html=parts.join('');
-    if(!html.includes('const DATA=')||!html.includes('renderAtlas();renderMatrix();renderCohort()')){
-      throw new Error('Pobrano niekompletny raport.');
+  let frame=null;
+
+  function fatal(message){
+    console.error(message);
+    if(errorEl) errorEl.textContent='Nie udało się uruchomić raportu.\n'+message+'\nOdśwież stronę.';
+  }
+
+  function runtimeError(message){
+    let banner=document.getElementById('runtime-error');
+    if(!banner){
+      banner=document.createElement('div');
+      banner.id='runtime-error';
+      banner.className='runtime-error';
+      document.body.appendChild(banner);
     }
-    const probe=`<script>window.__oitErrors=[];window.addEventListener('error',function(e){window.__oitErrors.push((e.message||'Błąd JavaScript')+' @ '+(e.lineno||'?')+':'+(e.colno||'?'));});window.addEventListener('unhandledrejection',function(e){window.__oitErrors.push('Promise: '+String(e.reason||'nieznany błąd'));});<\/script>`;
-    html=html.replace('<head>','<head>'+probe);
-    const frame=document.createElement('iframe');
+    banner.textContent='Raport nie uruchomił części interaktywnej.\n'+message+'\nOdśwież stronę.';
+  }
+
+  function scriptDefinition(node){
+    return {
+      attributes:[...node.attributes].map(attribute=>[attribute.name,attribute.value]),
+      source:node.textContent||''
+    };
+  }
+
+  async function appendScript(doc,definition){
+    const script=doc.createElement('script');
+    for(const [name,value] of definition.attributes){
+      if(name==='src') script.setAttribute(name,new URL(value,location.href).href);
+      else script.setAttribute(name,value);
+    }
+    if(script.getAttribute('src')){
+      await new Promise((resolve,reject)=>{
+        script.addEventListener('load',resolve,{once:true});
+        script.addEventListener('error',()=>reject(new Error('Nie załadowano skryptu: '+script.getAttribute('src'))),{once:true});
+        doc.body.appendChild(script);
+      });
+    }else{
+      script.textContent=definition.source;
+      doc.body.appendChild(script);
+    }
+  }
+
+  try{
+    const urls=Array.from({length:7},(_,index)=>`v2/part-${index+1}.txt?${VERSION}`);
+    const parts=await Promise.all(urls.map(async url=>{
+      const response=await fetch(url,{cache:'no-store'});
+      if(!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
+      return response.text();
+    }));
+    const source=parts.join('');
+
+    if(!source.includes('id="patientGrid"')||!source.includes('id="matrixBody"')||!source.includes('renderAtlas();renderMatrix();renderCohort()')){
+      throw new Error('Pobrane fragmenty raportu są niepełne.');
+    }
+
+    const parsed=new DOMParser().parseFromString(source,'text/html');
+    const definitions=[...parsed.querySelectorAll('script')].map(scriptDefinition);
+    parsed.querySelectorAll('script').forEach(node=>node.remove());
+    if(!definitions.length) throw new Error('W raporcie nie znaleziono skryptu uruchamiającego.');
+
+    frame=document.createElement('iframe');
     frame.className='report-frame';
     frame.title='OAiIT 2026 — Atlas pacjentów i analiza kohorty';
-    frame.srcdoc=html;
-    frame.addEventListener('load',()=>{
-      setTimeout(()=>{
-        try{
-          const d=frame.contentDocument;
-          const cards=d?.querySelectorAll('#patientGrid .patient-card').length||0;
-          const rows=d?.querySelectorAll('#matrixBody tr').length||0;
-          const charts=d?.querySelectorAll('.chart svg').length||0;
-          if(cards===0||rows===0||charts===0){
-            const errors=frame.contentWindow?.__oitErrors||[];
-            const banner=document.createElement('div');
-            banner.className='runtime-error';
-            banner.textContent='Raport nie uruchomił części interaktywnej. '+(errors.length?errors.join('\n'):`karty=${cards}, wiersze=${rows}, wykresy=${charts}`);
-            document.body.appendChild(banner);
-          }
-        }catch(e){console.error('Kontrola raportu:',e);}
-      },500);
-    });
+    frame.setAttribute('scrolling','yes');
     document.body.replaceChildren(frame);
-  }catch(e){
-    console.error(e);
-    errorEl.textContent='Nie udało się załadować raportu. '+e.message;
+
+    const win=frame.contentWindow;
+    const doc=frame.contentDocument;
+    if(!win||!doc) throw new Error('Przeglądarka nie udostępniła dokumentu raportu.');
+
+    const captured=[];
+    win.addEventListener('error',event=>{
+      const message=(event.message||'Błąd JavaScript')+' @ '+(event.lineno||'?')+':'+(event.colno||'?');
+      captured.push(message);
+      runtimeError(captured.join('\n'));
+    });
+    win.addEventListener('unhandledrejection',event=>{
+      const reason=event.reason&&event.reason.message?event.reason.message:String(event.reason||'nieznany błąd');
+      captured.push('Promise: '+reason);
+      runtimeError(captured.join('\n'));
+    });
+
+    doc.open();
+    doc.write('<!doctype html><html lang="pl"><head></head><body></body></html>');
+    doc.close();
+    doc.documentElement.lang=parsed.documentElement.lang||'pl';
+    doc.head.innerHTML=parsed.head.innerHTML;
+    doc.body.innerHTML=parsed.body.innerHTML;
+
+    const mobileFix=doc.createElement('style');
+    mobileFix.textContent=`
+      @media(max-width:850px){
+        .print{position:static!important;display:block!important;width:max-content;margin:14px 14px 0 auto!important;padding:9px 12px!important;box-shadow:none!important}
+        .chart{min-height:220px}
+        .shell{padding-bottom:calc(70px + env(safe-area-inset-bottom))!important}
+      }
+      @media print{.print{display:none!important}}
+    `;
+    doc.head.appendChild(mobileFix);
+
+    for(const definition of definitions) await appendScript(doc,definition);
+
+    const verify=()=>{
+      const cards=doc.querySelectorAll('#patientGrid .patient-card').length;
+      const rows=doc.querySelectorAll('#matrixBody tr').length;
+      const charts=doc.querySelectorAll('.chart svg').length;
+      if(cards!==53||rows!==53||charts<5){
+        runtimeError(captured.length?captured.join('\n'):`karty=${cards}/53, wiersze=${rows}/53, wykresy=${charts}/5`);
+        return false;
+      }
+      const banner=document.getElementById('runtime-error');
+      if(banner) banner.remove();
+      return true;
+    };
+
+    win.requestAnimationFrame(()=>win.requestAnimationFrame(()=>{
+      if(!verify()) win.setTimeout(verify,900);
+    }));
+  }catch(error){
+    if(frame) frame.remove();
+    fatal(error&&error.message?error.message:String(error));
   }
 })();
 </script>
