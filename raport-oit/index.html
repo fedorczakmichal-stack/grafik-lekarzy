@@ -16,7 +16,7 @@ html,body{height:100%;margin:0;background:#06111f;color:#f3f8fd;font-family:Inte
 <div class="wrap" id="loader"><div class="card"><div class="spinner"></div><h1>Ładowanie raportu</h1><p>Statystyka ogólna i 53 indywidualne profile pacjentów.</p><div class="err" id="err"></div></div></div>
 <script>
 (async()=>{
-  const VERSION='20260711-v9';
+  const VERSION='20260711-v9a';
   const initialError=document.getElementById('err');
   let reportMounted=false;
 
@@ -67,7 +67,7 @@ html,body{height:100%;margin:0;background:#06111f;color:#f3f8fd;font-family:Inte
     for(const script of scripts)await activateScript(script);
     await activateExternal(`enhance-v9.js?${VERSION}`);
 
-    const verify=()=>{const cards=document.querySelectorAll('#patientGrid .patient-card').length,rows=document.querySelectorAll('#matrixBody tr').length,charts=document.querySelectorAll('.chart svg').length,details=document.querySelectorAll('#oa-details .oa-card').length;if(cards!==53||rows!==53||charts<5||details<8){errorBox(captured.length?captured.join('\n'):`karty=${cards}/53, wiersze=${rows}/53, wykresy=${charts}/5, sekcje szczegółowe=${details}/8`);return false}const banner=document.getElementById('report-runtime-error');if(banner)banner.remove();return true};
+    const verify=()=>{const cards=document.querySelectorAll('#patientGrid .patient-card').length,rows=document.querySelectorAll('#matrixBody tr').length,charts=document.querySelectorAll('.chart svg').length,details=document.querySelectorAll('#oa-details .oa-card').length,legacy=/\bepizod/i.test(document.body.innerText||'');if(cards!==53||rows!==53||charts<5||details<8||legacy){errorBox(captured.length?captured.join('\n'):`karty=${cards}/53, wiersze=${rows}/53, wykresy=${charts}/5, sekcje szczegółowe=${details}/8, stare nazewnictwo=${legacy?'tak':'nie'}`);return false}const banner=document.getElementById('report-runtime-error');if(banner)banner.remove();return true};
     requestAnimationFrame(()=>requestAnimationFrame(()=>{if(!verify())setTimeout(verify,900);}));
   }catch(error){console.error(error);errorBox(error&&error.message?error.message:String(error),'fatal');}
 })();
