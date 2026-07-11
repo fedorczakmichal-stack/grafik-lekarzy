@@ -16,7 +16,7 @@ html,body{height:100%;margin:0;background:#06111f;color:#f3f8fd;font-family:Inte
 <div class="wrap" id="loader"><div class="card"><div class="spinner"></div><h1>Ładowanie raportu</h1><p>Atlas 53 pacjentów i analiza kohorty.</p><div class="err" id="err"></div></div></div>
 <script>
 (async()=>{
-  const VERSION='20260711-v7';
+  const VERSION='20260711-v8';
   const initialError=document.getElementById('err');
   let reportMounted=false;
 
@@ -61,6 +61,46 @@ html,body{height:100%;margin:0;background:#06111f;color:#f3f8fd;font-family:Inte
     }
   }
 
+  function repairFragments(parts){
+    const fixed=parts.map(part=>part.replace(/^\uFEFF/,'').replace(/[\r\n]+$/,''));
+
+    // part-2 zawierał błędną końcówkę P13, natomiast part-3 zaczyna się
+    // od prawidłowej kontynuacji nazwy pola „bronchoskopia”. Zachowujemy
+    // prawidłowy prefiks P13 i zastępujemy jego uszkodzoną końcówkę.
+    const marker='"bronchoskopia"';
+    const cut=fixed[1].lastIndexOf(marker);
+    if(cut<0||!fixed[2].startsWith('choskopia":')){
+      throw new Error('Nie rozpoznano granicy danych part-2/part-3.');
+    }
+    fixed[1]=fixed[1].slice(0,cut+5); // pozostawia dokładnie: "bron
+
+    // W part-4 i part-6 zapisano powtórzone znaki ": na początku
+    // fragmentu. Poprzedni fragment kończy się już dwukropkiem pola.
+    for(const index of [3,5]){
+      if(!fixed[index].startsWith('":')){
+        throw new Error(`Nie rozpoznano nadmiarowego prefiksu w part-${index+1}.`);
+      }
+      fixed[index]=fixed[index].slice(2);
+    }
+
+    return fixed.join('');
+  }
+
+  function validateInlineScript(source){
+    const dataPrefix='const DATA=';
+    const dataSuffix=';const P=DATA.';
+    const start=source.indexOf(dataPrefix);
+    const end=source.indexOf(dataSuffix,start+dataPrefix.length);
+    if(start>=0&&end>start){
+      const data=JSON.parse(source.slice(start+dataPrefix.length,end));
+      const ids=(data.patients||[]).map(patient=>patient.id_epizodu);
+      if(ids.length!==53||new Set(ids).size!==53||ids[0]!=='P01'||ids[52]!=='P53'){
+        throw new Error(`Nieprawidłowy zbiór pacjentów: ${ids.length} rekordów, ${new Set(ids).size} unikalnych ID.`);
+      }
+    }
+    new Function(source);
+  }
+
   try{
     const urls=Array.from({length:7},(_,index)=>`v2/part-${index+1}.txt?${VERSION}`);
     const parts=await Promise.all(urls.map(async url=>{
@@ -69,12 +109,7 @@ html,body{height:100%;margin:0;background:#06111f;color:#f3f8fd;font-family:Inte
       return response.text();
     }));
 
-    // Fragmenty zostały podzielone także wewnątrz nazw pól JSON/JavaScript.
-    // GitHub przechowuje każdy plik z końcowym znakiem nowej linii; pozostawienie
-    // go na granicy fragmentów rozcina literał i powoduje SyntaxError w Safari.
-    const source=parts
-      .map(part=>part.replace(/^\uFEFF/,'').replace(/[\r\n]+$/,''))
-      .join('');
+    const source=repairFragments(parts);
 
     if(!source.includes('id="patientGrid"')||!source.includes('id="matrixBody"')||!source.includes('renderAtlas();renderMatrix();renderCohort()')){
       throw new Error('Pobrane fragmenty raportu są niepełne.');
@@ -85,10 +120,8 @@ html,body{height:100%;margin:0;background:#06111f;color:#f3f8fd;font-family:Inte
     parsed.querySelectorAll('script').forEach(node=>node.remove());
     if(!scripts.length) throw new Error('W raporcie nie znaleziono skryptu uruchamiającego.');
 
-    // Kompilacja przed podmianą dokumentu daje czytelny błąd, zanim pojawi się
-    // częściowo wyrenderowany raport.
     for(const script of scripts){
-      if(!script.attributes.some(([name])=>name==='src')) new Function(script.source);
+      if(!script.attributes.some(([name])=>name==='src')) validateInlineScript(script.source);
     }
 
     document.documentElement.lang=parsed.documentElement.lang||'pl';
