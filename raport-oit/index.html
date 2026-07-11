@@ -9,9 +9,56 @@
 <meta http-equiv="Expires" content="0">
 <title>OAiIT 2026 — ładowanie atlasu pacjentów</title>
 <style>
-html,body{height:100%;margin:0;background:#06111f;color:#f3f8fd;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.wrap{height:100%;display:grid;place-items:center;padding:24px;text-align:center}.card{max-width:520px;padding:28px;border:1px solid rgba(255,255,255,.12);border-radius:22px;background:linear-gradient(145deg,rgba(255,255,255,.06),rgba(255,255,255,.02));box-shadow:0 20px 60px rgba(0,0,0,.35)}.spinner{width:48px;height:48px;border-radius:50%;border:4px solid rgba(255,255,255,.12);border-top-color:#4ad8b8;margin:0 auto 18px;animation:s .8s linear infinite}@keyframes s{to{transform:rotate(360deg)}}h1{font-size:24px;margin:0 0 8px}p{color:#9eb1c5;margin:0}.err{color:#ff9aa6;margin-top:14px;font-size:13px}</style>
+html,body{height:100%;margin:0;background:#06111f;color:#f3f8fd;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.wrap{height:100%;display:grid;place-items:center;padding:24px;text-align:center;box-sizing:border-box}.card{max-width:520px;padding:28px;border:1px solid rgba(255,255,255,.12);border-radius:22px;background:linear-gradient(145deg,rgba(255,255,255,.06),rgba(255,255,255,.02));box-shadow:0 20px 60px rgba(0,0,0,.35)}.spinner{width:48px;height:48px;border-radius:50%;border:4px solid rgba(255,255,255,.12);border-top-color:#4ad8b8;margin:0 auto 18px;animation:s .8s linear infinite}@keyframes s{to{transform:rotate(360deg)}}h1{font-size:24px;margin:0 0 8px}p{color:#9eb1c5;margin:0}.err{color:#ff9aa6;margin-top:14px;font-size:13px;white-space:pre-wrap}.report-frame{position:fixed;inset:0;width:100%;height:100%;border:0;background:#06111f}.runtime-error{position:fixed;z-index:99999;left:12px;right:12px;bottom:12px;padding:12px 14px;border:1px solid rgba(255,109,125,.45);border-radius:13px;background:rgba(62,11,20,.96);color:#ffd9dd;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;box-shadow:0 14px 40px rgba(0,0,0,.45);white-space:pre-wrap}
+</style>
 </head>
-<body><div class="wrap"><div class="card"><div class="spinner"></div><h1>Ładowanie nowej wersji raportu</h1><p>Atlas 53 pacjentów i analiza kohorty.</p><div class="err" id="err"></div></div></div>
+<body>
+<div class="wrap" id="loader"><div class="card"><div class="spinner"></div><h1>Ładowanie nowej wersji raportu</h1><p>Atlas 53 pacjentów i analiza kohorty.</p><div class="err" id="err"></div></div></div>
 <script>
-(async()=>{try{const v='20260711-v2';const urls=Array.from({length:7},(_,i)=>`v2/part-${i+1}.txt?${v}`);const parts=await Promise.all(urls.map(u=>fetch(u,{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(`${u}: ${r.status}`);return r.text()})));document.open();document.write(parts.join(''));document.close()}catch(e){document.getElementById('err').textContent='Nie udało się załadować raportu. Odśwież stronę za chwilę. '+e.message}})();
-</script></body></html>
+(async()=>{
+  const errorEl=document.getElementById('err');
+  try{
+    const v='20260711-v3';
+    const urls=Array.from({length:7},(_,i)=>`v2/part-${i+1}.txt?${v}`);
+    const parts=await Promise.all(urls.map(async u=>{
+      const r=await fetch(u,{cache:'no-store'});
+      if(!r.ok)throw new Error(`${u}: HTTP ${r.status}`);
+      return r.text();
+    }));
+    let html=parts.join('');
+    if(!html.includes('const DATA=')||!html.includes('renderAtlas();renderMatrix();renderCohort()')){
+      throw new Error('Pobrano niekompletny raport.');
+    }
+    const probe=`<script>window.__oitErrors=[];window.addEventListener('error',function(e){window.__oitErrors.push((e.message||'Błąd JavaScript')+' @ '+(e.lineno||'?')+':'+(e.colno||'?'));});window.addEventListener('unhandledrejection',function(e){window.__oitErrors.push('Promise: '+String(e.reason||'nieznany błąd'));});<\/script>`;
+    html=html.replace('<head>','<head>'+probe);
+    const frame=document.createElement('iframe');
+    frame.className='report-frame';
+    frame.title='OAiIT 2026 — Atlas pacjentów i analiza kohorty';
+    frame.srcdoc=html;
+    frame.addEventListener('load',()=>{
+      setTimeout(()=>{
+        try{
+          const d=frame.contentDocument;
+          const cards=d?.querySelectorAll('#patientGrid .patient-card').length||0;
+          const rows=d?.querySelectorAll('#matrixBody tr').length||0;
+          const charts=d?.querySelectorAll('.chart svg').length||0;
+          if(cards===0||rows===0||charts===0){
+            const errors=frame.contentWindow?.__oitErrors||[];
+            const banner=document.createElement('div');
+            banner.className='runtime-error';
+            banner.textContent='Raport nie uruchomił części interaktywnej. '+(errors.length?errors.join('\n'):`karty=${cards}, wiersze=${rows}, wykresy=${charts}`);
+            document.body.appendChild(banner);
+          }
+        }catch(e){console.error('Kontrola raportu:',e);}
+      },500);
+    });
+    document.body.replaceChildren(frame);
+  }catch(e){
+    console.error(e);
+    errorEl.textContent='Nie udało się załadować raportu. '+e.message;
+  }
+})();
+</script>
+</body>
+</html>
