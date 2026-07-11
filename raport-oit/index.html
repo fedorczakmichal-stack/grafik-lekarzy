@@ -7,173 +7,69 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>OAiIT 2026 — ładowanie atlasu pacjentów</title>
+<title>OAiIT 2026 — ładowanie raportu</title>
 <style>
 html,body{height:100%;margin:0;background:#06111f;color:#f3f8fd;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.wrap{height:100%;display:grid;place-items:center;padding:24px;text-align:center;box-sizing:border-box}.card{max-width:520px;padding:28px;border:1px solid rgba(255,255,255,.12);border-radius:22px;background:linear-gradient(145deg,rgba(255,255,255,.06),rgba(255,255,255,.02));box-shadow:0 20px 60px rgba(0,0,0,.35)}.spinner{width:48px;height:48px;border-radius:50%;border:4px solid rgba(255,255,255,.12);border-top-color:#4ad8b8;margin:0 auto 18px;animation:s .8s linear infinite}@keyframes s{to{transform:rotate(360deg)}}h1{font-size:24px;margin:0 0 8px}p{color:#9eb1c5;margin:0}.err{color:#ff9aa6;margin-top:14px;font-size:13px;white-space:pre-wrap}
 </style>
 </head>
 <body>
-<div class="wrap" id="loader"><div class="card"><div class="spinner"></div><h1>Ładowanie raportu</h1><p>Atlas 53 pacjentów i analiza kohorty.</p><div class="err" id="err"></div></div></div>
+<div class="wrap" id="loader"><div class="card"><div class="spinner"></div><h1>Ładowanie raportu</h1><p>Statystyka ogólna i 53 indywidualne profile pacjentów.</p><div class="err" id="err"></div></div></div>
 <script>
 (async()=>{
-  const VERSION='20260711-v8';
+  const VERSION='20260711-v9';
   const initialError=document.getElementById('err');
   let reportMounted=false;
 
   function errorBox(message,kind='runtime'){
-    if(!reportMounted&&initialError){
-      initialError.textContent='Nie udało się uruchomić raportu.\n'+message+'\nOdśwież stronę.';
-      return;
-    }
+    if(!reportMounted&&initialError){initialError.textContent='Nie udało się uruchomić raportu.\n'+message+'\nOdśwież stronę.';return;}
     let banner=document.getElementById('report-runtime-error');
-    if(!banner){
-      banner=document.createElement('div');
-      banner.id='report-runtime-error';
-      banner.setAttribute('role','alert');
-      banner.style.cssText='position:relative;z-index:99999;margin:12px 14px;padding:12px 14px;border:1px solid rgba(255,109,125,.55);border-radius:12px;background:#34131b;color:#ffd7dc;font:600 13px/1.45 system-ui,-apple-system,sans-serif;white-space:pre-wrap;box-shadow:0 14px 36px rgba(0,0,0,.35)';
-      document.body.prepend(banner);
-    }
+    if(!banner){banner=document.createElement('div');banner.id='report-runtime-error';banner.setAttribute('role','alert');banner.style.cssText='position:relative;z-index:99999;margin:12px 14px;padding:12px 14px;border:1px solid rgba(255,109,125,.55);border-radius:12px;background:#34131b;color:#ffd7dc;font:600 13px/1.45 system-ui,-apple-system,sans-serif;white-space:pre-wrap;box-shadow:0 14px 36px rgba(0,0,0,.35)';document.body.prepend(banner);}
     banner.textContent=(kind==='fatal'?'Nie udało się uruchomić raportu.':'Raport nie uruchomił części interaktywnej.')+'\n'+message+'\nOdśwież stronę.';
   }
 
-  function definition(node){
-    return {
-      attributes:[...node.attributes].map(attribute=>[attribute.name,attribute.value]),
-      source:node.textContent||''
-    };
-  }
-
+  function definition(node){return{attributes:[...node.attributes].map(a=>[a.name,a.value]),source:node.textContent||''};}
   async function activateScript(item){
     const script=document.createElement('script');
-    for(const [name,value] of item.attributes){
-      if(name==='src') script.setAttribute(name,new URL(value,location.href).href);
-      else script.setAttribute(name,value);
-    }
-    if(script.getAttribute('src')){
-      await new Promise((resolve,reject)=>{
-        script.addEventListener('load',resolve,{once:true});
-        script.addEventListener('error',()=>reject(new Error('Nie załadowano skryptu: '+script.getAttribute('src'))),{once:true});
-        document.body.appendChild(script);
-      });
-    }else{
-      script.textContent=item.source;
-      document.body.appendChild(script);
-    }
+    for(const [name,value] of item.attributes){if(name==='src')script.setAttribute(name,new URL(value,location.href).href);else script.setAttribute(name,value);}
+    if(script.getAttribute('src'))await new Promise((resolve,reject)=>{script.addEventListener('load',resolve,{once:true});script.addEventListener('error',()=>reject(new Error('Nie załadowano skryptu: '+script.getAttribute('src'))),{once:true});document.body.appendChild(script);});
+    else{script.textContent=item.source;document.body.appendChild(script);}
   }
+  async function activateExternal(src){return activateScript({attributes:[['src',src]],source:''});}
 
   function repairFragments(parts){
     const fixed=parts.map(part=>part.replace(/^\uFEFF/,'').replace(/[\r\n]+$/,''));
-
-    // part-2 zawierał błędną końcówkę P13, natomiast part-3 zaczyna się
-    // od prawidłowej kontynuacji nazwy pola „bronchoskopia”. Zachowujemy
-    // prawidłowy prefiks P13 i zastępujemy jego uszkodzoną końcówkę.
     const marker='"bronchoskopia"';
     const cut=fixed[1].lastIndexOf(marker);
-    if(cut<0||!fixed[2].startsWith('choskopia":')){
-      throw new Error('Nie rozpoznano granicy danych part-2/part-3.');
-    }
-    fixed[1]=fixed[1].slice(0,cut+5); // pozostawia dokładnie: "bron
-
-    // W part-4 i part-6 zapisano powtórzone znaki ": na początku
-    // fragmentu. Poprzedni fragment kończy się już dwukropkiem pola.
-    for(const index of [3,5]){
-      if(!fixed[index].startsWith('":')){
-        throw new Error(`Nie rozpoznano nadmiarowego prefiksu w part-${index+1}.`);
-      }
-      fixed[index]=fixed[index].slice(2);
-    }
-
+    if(cut<0||!fixed[2].startsWith('choskopia":'))throw new Error('Nie rozpoznano granicy danych part-2/part-3.');
+    fixed[1]=fixed[1].slice(0,cut+5);
+    for(const index of [3,5]){if(!fixed[index].startsWith('":'))throw new Error(`Nie rozpoznano nadmiarowego prefiksu w part-${index+1}.`);fixed[index]=fixed[index].slice(2);}
     return fixed.join('');
   }
-
   function validateInlineScript(source){
-    const dataPrefix='const DATA=';
-    const dataSuffix=';const P=DATA.';
-    const start=source.indexOf(dataPrefix);
-    const end=source.indexOf(dataSuffix,start+dataPrefix.length);
-    if(start>=0&&end>start){
-      const data=JSON.parse(source.slice(start+dataPrefix.length,end));
-      const ids=(data.patients||[]).map(patient=>patient.id_epizodu);
-      if(ids.length!==53||new Set(ids).size!==53||ids[0]!=='P01'||ids[52]!=='P53'){
-        throw new Error(`Nieprawidłowy zbiór pacjentów: ${ids.length} rekordów, ${new Set(ids).size} unikalnych ID.`);
-      }
-    }
+    const prefix='const DATA=',suffix=';const P=DATA.';const start=source.indexOf(prefix),end=source.indexOf(suffix,start+prefix.length);
+    if(start>=0&&end>start){const data=JSON.parse(source.slice(start+prefix.length,end)),ids=(data.patients||[]).map(r=>r.id_epizodu);if(ids.length!==53||new Set(ids).size!==53||ids[0]!=='P01'||ids[52]!=='P53')throw new Error(`Nieprawidłowy zbiór pacjentów: ${ids.length} rekordów, ${new Set(ids).size} unikalnych ID.`);}
     new Function(source);
   }
 
   try{
-    const urls=Array.from({length:7},(_,index)=>`v2/part-${index+1}.txt?${VERSION}`);
-    const parts=await Promise.all(urls.map(async url=>{
-      const response=await fetch(url,{cache:'no-store'});
-      if(!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
-      return response.text();
-    }));
-
+    const urls=Array.from({length:7},(_,i)=>`v2/part-${i+1}.txt?${VERSION}`);
+    const parts=await Promise.all(urls.map(async url=>{const response=await fetch(url,{cache:'no-store'});if(!response.ok)throw new Error(`${url}: HTTP ${response.status}`);return response.text();}));
     const source=repairFragments(parts);
-
-    if(!source.includes('id="patientGrid"')||!source.includes('id="matrixBody"')||!source.includes('renderAtlas();renderMatrix();renderCohort()')){
-      throw new Error('Pobrane fragmenty raportu są niepełne.');
-    }
-
+    if(!source.includes('id="patientGrid"')||!source.includes('id="matrixBody"')||!source.includes('renderAtlas();renderMatrix();renderCohort()'))throw new Error('Pobrane fragmenty raportu są niepełne.');
     const parsed=new DOMParser().parseFromString(source,'text/html');
-    const scripts=[...parsed.querySelectorAll('script')].map(definition);
-    parsed.querySelectorAll('script').forEach(node=>node.remove());
-    if(!scripts.length) throw new Error('W raporcie nie znaleziono skryptu uruchamiającego.');
+    const scripts=[...parsed.querySelectorAll('script')].map(definition);parsed.querySelectorAll('script').forEach(node=>node.remove());
+    if(!scripts.length)throw new Error('W raporcie nie znaleziono skryptu uruchamiającego.');
+    for(const script of scripts)if(!script.attributes.some(([name])=>name==='src'))validateInlineScript(script.source);
 
-    for(const script of scripts){
-      if(!script.attributes.some(([name])=>name==='src')) validateInlineScript(script.source);
-    }
+    document.documentElement.lang=parsed.documentElement.lang||'pl';document.head.innerHTML=parsed.head.innerHTML;document.body.innerHTML=parsed.body.innerHTML;reportMounted=true;
+    const mobileFix=document.createElement('style');mobileFix.textContent='@media(max-width:850px){.print{position:static!important;display:block!important;width:max-content;margin:14px 14px 0 auto!important;padding:9px 12px!important;box-shadow:none!important}.chart{min-height:220px}.shell{padding-bottom:calc(70px + env(safe-area-inset-bottom))!important}}@media print{.print{display:none!important}}';document.head.appendChild(mobileFix);
+    const captured=[];window.addEventListener('error',event=>{const message=(event.message||'Błąd JavaScript')+' @ '+(event.lineno||'?')+':'+(event.colno||'?');captured.push(message);errorBox(captured.join('\n'));});window.addEventListener('unhandledrejection',event=>{const reason=event.reason&&event.reason.message?event.reason.message:String(event.reason||'nieznany błąd');captured.push('Promise: '+reason);errorBox(captured.join('\n'));});
+    for(const script of scripts)await activateScript(script);
+    await activateExternal(`enhance-v9.js?${VERSION}`);
 
-    document.documentElement.lang=parsed.documentElement.lang||'pl';
-    document.head.innerHTML=parsed.head.innerHTML;
-    document.body.innerHTML=parsed.body.innerHTML;
-    reportMounted=true;
-
-    const mobileFix=document.createElement('style');
-    mobileFix.textContent=`
-      @media(max-width:850px){
-        .print{position:static!important;display:block!important;width:max-content;margin:14px 14px 0 auto!important;padding:9px 12px!important;box-shadow:none!important}
-        .chart{min-height:220px}
-        .shell{padding-bottom:calc(70px + env(safe-area-inset-bottom))!important}
-      }
-      @media print{.print{display:none!important}}
-    `;
-    document.head.appendChild(mobileFix);
-
-    const captured=[];
-    window.addEventListener('error',event=>{
-      const message=(event.message||'Błąd JavaScript')+' @ '+(event.lineno||'?')+':'+(event.colno||'?');
-      captured.push(message);
-      errorBox(captured.join('\n'));
-    });
-    window.addEventListener('unhandledrejection',event=>{
-      const reason=event.reason&&event.reason.message?event.reason.message:String(event.reason||'nieznany błąd');
-      captured.push('Promise: '+reason);
-      errorBox(captured.join('\n'));
-    });
-
-    for(const script of scripts) await activateScript(script);
-
-    const verify=()=>{
-      const cards=document.querySelectorAll('#patientGrid .patient-card').length;
-      const rows=document.querySelectorAll('#matrixBody tr').length;
-      const charts=document.querySelectorAll('.chart svg').length;
-      if(cards!==53||rows!==53||charts<5){
-        errorBox(captured.length?captured.join('\n'):`karty=${cards}/53, wiersze=${rows}/53, wykresy=${charts}/5`);
-        return false;
-      }
-      const banner=document.getElementById('report-runtime-error');
-      if(banner) banner.remove();
-      return true;
-    };
-
-    requestAnimationFrame(()=>requestAnimationFrame(()=>{
-      if(!verify()) setTimeout(verify,900);
-    }));
-  }catch(error){
-    console.error(error);
-    errorBox(error&&error.message?error.message:String(error),'fatal');
-  }
+    const verify=()=>{const cards=document.querySelectorAll('#patientGrid .patient-card').length,rows=document.querySelectorAll('#matrixBody tr').length,charts=document.querySelectorAll('.chart svg').length,details=document.querySelectorAll('#oa-details .oa-card').length;if(cards!==53||rows!==53||charts<5||details<8){errorBox(captured.length?captured.join('\n'):`karty=${cards}/53, wiersze=${rows}/53, wykresy=${charts}/5, sekcje szczegółowe=${details}/8`);return false}const banner=document.getElementById('report-runtime-error');if(banner)banner.remove();return true};
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{if(!verify())setTimeout(verify,900);}));
+  }catch(error){console.error(error);errorBox(error&&error.message?error.message:String(error),'fatal');}
 })();
 </script>
 </body>
