@@ -16,7 +16,7 @@ html,body{height:100%;margin:0;background:#06111f;color:#f3f8fd;font-family:Inte
 <div class="wrap" id="loader"><div class="card"><div class="spinner"></div><h1>Ładowanie raportu</h1><p>Atlas 53 pacjentów i analiza kohorty.</p><div class="err" id="err"></div></div></div>
 <script>
 (async()=>{
-  const VERSION='20260711-v6';
+  const VERSION='20260711-v7';
   const initialError=document.getElementById('err');
   let reportMounted=false;
 
@@ -68,7 +68,13 @@ html,body{height:100%;margin:0;background:#06111f;color:#f3f8fd;font-family:Inte
       if(!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
       return response.text();
     }));
-    const source=parts.join('');
+
+    // Fragmenty zostały podzielone także wewnątrz nazw pól JSON/JavaScript.
+    // GitHub przechowuje każdy plik z końcowym znakiem nowej linii; pozostawienie
+    // go na granicy fragmentów rozcina literał i powoduje SyntaxError w Safari.
+    const source=parts
+      .map(part=>part.replace(/^\uFEFF/,'').replace(/[\r\n]+$/,''))
+      .join('');
 
     if(!source.includes('id="patientGrid"')||!source.includes('id="matrixBody"')||!source.includes('renderAtlas();renderMatrix();renderCohort()')){
       throw new Error('Pobrane fragmenty raportu są niepełne.');
@@ -78,6 +84,12 @@ html,body{height:100%;margin:0;background:#06111f;color:#f3f8fd;font-family:Inte
     const scripts=[...parsed.querySelectorAll('script')].map(definition);
     parsed.querySelectorAll('script').forEach(node=>node.remove());
     if(!scripts.length) throw new Error('W raporcie nie znaleziono skryptu uruchamiającego.');
+
+    // Kompilacja przed podmianą dokumentu daje czytelny błąd, zanim pojawi się
+    // częściowo wyrenderowany raport.
+    for(const script of scripts){
+      if(!script.attributes.some(([name])=>name==='src')) new Function(script.source);
+    }
 
     document.documentElement.lang=parsed.documentElement.lang||'pl';
     document.head.innerHTML=parsed.head.innerHTML;
