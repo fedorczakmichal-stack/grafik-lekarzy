@@ -16,7 +16,7 @@ html,body{height:100%;margin:0;background:#06111f;color:#f3f8fd;font-family:Inte
 <div class="wrap" id="loader"><div class="card"><div class="spinner"></div><h1>Ładowanie raportu</h1><p>Atlas 53 pacjentów i analiza kohorty.</p><div class="err" id="err"></div></div></div>
 <script>
 (async()=>{
-  const VERSION='20260711-v4';
+  const VERSION='20260711-v5';
   const errorEl=document.getElementById('err');
   let frame=null;
 
@@ -87,7 +87,26 @@ html,body{height:100%;margin:0;background:#06111f;color:#f3f8fd;font-family:Inte
 
     const win=frame.contentWindow;
     const doc=frame.contentDocument;
-    if(!win||!doc) throw new Error('Przeglądarka nie udostępniła dokumentu raportu.');
+    if(!win||!doc||!doc.head||!doc.body) throw new Error('Przeglądarka nie udostępniła dokumentu raportu.');
+
+    doc.documentElement.lang=parsed.documentElement.lang||'pl';
+    doc.head.innerHTML=parsed.head.innerHTML;
+    doc.body.innerHTML=parsed.body.innerHTML;
+
+    const base=doc.createElement('base');
+    base.href=location.href;
+    doc.head.prepend(base);
+
+    const mobileFix=doc.createElement('style');
+    mobileFix.textContent=`
+      @media(max-width:850px){
+        .print{position:static!important;display:block!important;width:max-content;margin:14px 14px 0 auto!important;padding:9px 12px!important;box-shadow:none!important}
+        .chart{min-height:220px}
+        .shell{padding-bottom:calc(70px + env(safe-area-inset-bottom))!important}
+      }
+      @media print{.print{display:none!important}}
+    `;
+    doc.head.appendChild(mobileFix);
 
     const captured=[];
     win.addEventListener('error',event=>{
@@ -100,24 +119,6 @@ html,body{height:100%;margin:0;background:#06111f;color:#f3f8fd;font-family:Inte
       captured.push('Promise: '+reason);
       runtimeError(captured.join('\n'));
     });
-
-    doc.open();
-    doc.write('<!doctype html><html lang="pl"><head></head><body></body></html>');
-    doc.close();
-    doc.documentElement.lang=parsed.documentElement.lang||'pl';
-    doc.head.innerHTML=parsed.head.innerHTML;
-    doc.body.innerHTML=parsed.body.innerHTML;
-
-    const mobileFix=doc.createElement('style');
-    mobileFix.textContent=`
-      @media(max-width:850px){
-        .print{position:static!important;display:block!important;width:max-content;margin:14px 14px 0 auto!important;padding:9px 12px!important;box-shadow:none!important}
-        .chart{min-height:220px}
-        .shell{padding-bottom:calc(70px + env(safe-area-inset-bottom))!important}
-      }
-      @media print{.print{display:none!important}}
-    `;
-    doc.head.appendChild(mobileFix);
 
     for(const definition of definitions) await appendScript(doc,definition);
 
